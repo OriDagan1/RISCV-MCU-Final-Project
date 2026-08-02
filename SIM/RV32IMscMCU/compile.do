@@ -13,7 +13,13 @@
 set DUT  ../../DUT/RV32IMscMCU
 set TB   ../../TB/RV32IMscMCU
 
-if {[file exists work]} { vdel -all }
+# Drop any loaded simulation first, otherwise the work library stays locked.
+# "file delete" rather than "vdel -all": vdel prints "Error 133: Unable to
+# remove directory" straight to the transcript when the library is in use,
+# and being its own output, catch cannot suppress it. Either way a stale
+# library is harmless - vlib and vcom below just overwrite it.
+catch {quit -sim}
+catch {file delete -force work}
 vlib work
 vmap work work
 
