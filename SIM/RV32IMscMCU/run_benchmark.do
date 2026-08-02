@@ -53,15 +53,26 @@ add wave              /tb_RV32I/MemWrite_ctrl_o
 add wave -radix hex  /tb_RV32I/dtcm_addr_o
 add wave -radix hex  /tb_RV32I/dtcm_data_wr_o
 
+# Catch the "finish: beq x0,x0,finish" self-loop so the cycle count is the
+# program's, not however long we happened to keep the clock running. The
+# counter starts at reset, so this is cycles-to-completion.
+set ::FINISH_CYCLES "not reached"
+when {/tb_RV32I/instruction_o == 16#63#} {
+	if {$::FINISH_CYCLES eq "not reached"} {
+		set ::FINISH_CYCLES [examine -radix unsigned /tb_RV32I/mclk_cnt_o]
+	}
+}
+
 run $RUN_TIME
 
 echo "-------------------------------------------------"
-echo " PC          = [examine -radix hex /tb_RV32I/pc_o]"
-echo " instruction = [examine -radix hex /tb_RV32I/instruction_o]"
-echo " MCLK cycles = [examine -radix unsigned /tb_RV32I/mclk_cnt_o]"
+echo " PC              = [examine -radix hex /tb_RV32I/pc_o]"
+echo " instruction     = [examine -radix hex /tb_RV32I/instruction_o]"
+echo " cycles at finish= $::FINISH_CYCLES"
 echo "-------------------------------------------------"
-echo " If PC has stopped changing and instruction = 00000063,"
-echo " the program has reached its 'finish' self-loop."
+echo " instruction 00000063 with a frozen PC means the program"
+echo " reached its 'finish' self-loop. If it says 'not reached',"
+echo " increase RUN_TIME at the top of this script."
 echo "-------------------------------------------------"
 
 # Dump the data segment so it can be diffed against the RARS reference.
