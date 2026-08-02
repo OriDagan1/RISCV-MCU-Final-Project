@@ -1,0 +1,69 @@
+#=============================================================================
+# Advanced CPU architecture and Hardware Accelerators Lab 361-1-4693 BGU
+# Compile every source of the RV32IM MCU into the "work" library.
+#
+# Run from this directory:    do compile.do
+#=============================================================================
+# Run this from SIM/RV32IMscMCU - the paths below are relative to it.
+#
+# Deliberately NOT [file normalize]d: if you reach the project through an
+# ASCII directory junction (see the note at the bottom of this file),
+# normalizing would resolve it back to the real path and ModelSim cannot
+# open a path containing non-ASCII characters.
+set DUT  ../../DUT/RV32IMscMCU
+set TB   ../../TB/RV32IMscMCU
+
+# Drop any loaded simulation first, otherwise the work library stays locked.
+# "file delete" rather than "vdel -all": vdel prints "Error 133: Unable to
+# remove directory" straight to the transcript when the library is in use,
+# and being its own output, catch cannot suppress it. Either way a stale
+# library is harmless - vlib and vcom below just overwrite it.
+catch {quit -sim}
+catch {file delete -force work}
+vlib work
+vmap work work
+
+# Order matters: packages first, then leaf modules, then the core, then the TBs
+foreach f [list \
+	$DUT/cond_compilation_package.vhd \
+	$DUT/const_package.vhd            \
+	$DUT/aux_package.vhd              \
+	$DUT/MULT.vhd                     \
+	$DUT/SUBTRACTOR.vhd               \
+	$DUT/DIV.vhd                      \
+	$DUT/CDC_SYNC.vhd                 \
+	$DUT/DIV_ACCEL.vhd                \
+	$DUT/CONTROL.VHD                  \
+	$DUT/IDECODE.VHD                  \
+	$DUT/IFETCH.VHD                   \
+	$DUT/EXECUTE.VHD                  \
+	$DUT/DMEMORY.VHD                  \
+	$DUT/RV32I_CORE.vhd               \
+	$DUT/MCU.vhd                      \
+	$TB/tb_RV32I.vhd                  \
+	$TB/tb_divider.vhd                \
+	$TB/tb_cdc_sync.vhd               \
+	$TB/tb_div_accel.vhd              ] {
+	echo "vcom $f"
+	if {[catch {vcom -2008 -quiet $f} msg]} {
+		echo "COMPILE FAILED: $f"
+		echo $msg
+		return
+	}
+}
+echo "-------------------------------------------------"
+echo " compile OK"
+echo "-------------------------------------------------"
+
+# NOTE: there is no PLL. The supplied PLL.vhd wrapped an ALTPLL, a Cyclone
+# II megafunction unsupported on the Cyclone V of the DE10-Standard, and has
+# been deleted; MCU.vhd derives MCLK from clk_i with a toggle flip-flop.
+#
+# NOTE: ModelSim 20.1 cannot open a path containing non-ASCII characters,
+# and the project lives under a Hebrew directory name. Reach it through an
+# ASCII directory junction instead (one-off, no admin rights, no copying):
+#
+#   mklink /J C:\Users\oripa\rv32im "C:\Users\oripa\Documents\<hebrew>\RISC-V MCU Project"
+#
+# then work from C:\Users\oripa\rv32im\SIM\RV32IMscMCU. Remove it later with
+# "rmdir C:\Users\oripa\rv32im", which deletes only the link.

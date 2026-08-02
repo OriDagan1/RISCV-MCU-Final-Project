@@ -18,7 +18,10 @@ ENTITY Ifetch IS
 		DATA_BUS_WIDTH 		: integer	:= 32;
 		PC_WIDTH 			: integer	:= 10;
 		ITCM_ADDR_WIDTH 	: integer	:= 8;
-		WORDS_NUM 			: integer	:= 256
+		WORDS_NUM 			: integer	:= 256;
+		-- Benchmark image. Override from the testbench (or with vsim -g) so
+		-- switching application does not mean editing this file.
+		ITCM_INIT_FILE		: string	:= "C:\Users\oripa\Documents\Benchmark_Apps\test3\RV32IM\bin\M9K-intel\ITCM.hex"
 	);
 	PORT(
 		--Inputs
@@ -30,7 +33,8 @@ ENTITY Ifetch IS
 		Jal_ctrl_i		: IN 	STD_LOGIC;
 		Jalr_ctrl_i		: IN 	STD_LOGIC;
 		alu_res_i 		: IN 	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
-		
+		stall_i			: IN 	STD_LOGIC;	-- hold the current instruction (multicycle accelerator busy)
+
 		--Outputs
 		pc_o 			: OUT	STD_LOGIC_VECTOR(PC_WIDTH-1 DOWNTO 0);
 		pc_plus4_o 		: OUT	STD_LOGIC_VECTOR(PC_WIDTH-1 DOWNTO 0);
@@ -61,7 +65,7 @@ BEGIN
 		lpm_hint 						=> "ENABLE_RUNTIME_MOD = YES,INSTANCE_NAME = ITCM",
 		lpm_type 						=> "altsyncram",
 		outdata_reg_a 					=> "UNREGISTERED",
-		init_file 						=> "C:\Users\oripa\Documents\Benchmark_Apps\test3\RV32IM\bin\M9K-intel\ITCM.hex",  -- Change path for input file
+		init_file 						=> ITCM_INIT_FILE,
 		intended_device_family			=> "Cyclone"
 	)
 	PORT MAP (
@@ -89,10 +93,14 @@ END PROCESS;
 	-- Decision MUX for the next PC value
 	brTaken_w <= 	Branch_ctrl_i AND brTaken_i;
 	
+	-- Stalling re-drives the address of the instruction that is already being
+	-- executed, so the ITCM re-reads it and pc_q keeps its value. pc_plus4_q
+	-- follows automatically, since it is loaded with next_pc_w+4 every cycle.
 	next_pc_w	<=				(others => '0') 					WHEN	rst_q 								ELSE
+								pc_q(PC_WIDTH-1 DOWNTO 0)			WHEN	stall_i = '1'						ELSE	-- case of accelerator stall
 								alu_res_i(PC_WIDTH-1 DOWNTO 0)		WHEN	Jalr_ctrl_i							ELSE	-- case of jalr
-								addr_gen_i(PC_WIDTH-1 DOWNTO 0)		WHEN	brTaken_w or Jal_ctrl_i 			ELSE	-- case of Branch Taken or jal 
-								pc_plus4_q(PC_WIDTH-1 DOWNTO 0);														-- case of Branch Not-Taken 				
+								addr_gen_i(PC_WIDTH-1 DOWNTO 0)		WHEN	brTaken_w or Jal_ctrl_i 			ELSE	-- case of Branch Taken or jal
+								pc_plus4_q(PC_WIDTH-1 DOWNTO 0);														-- case of Branch Not-Taken
 -----------------------------------------------------------------------------------
 -- pc_plus4 register
 -------------------------------------------------------------------------------------

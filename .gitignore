@@ -1,1 +1,8 @@
 .claude/
+# ModelSim work products
+SIM/**/work/
+SIM/**/transcript
+SIM/**/vsim.wlf
+SIM/**/wlft*
+SIM/**/*.mem
+SIM/**/modelsim.ini

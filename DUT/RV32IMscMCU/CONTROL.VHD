@@ -27,7 +27,12 @@ ENTITY control IS
 		Jalr_ctrl_o 		: OUT 	STD_LOGIC;
 		UpperIm_ctrl_o		: OUT 	STD_LOGIC_VECTOR(1 DOWNTO 0);
 		ALUOp_ctrl_o	 	: OUT 	STD_LOGIC_VECTOR(4 DOWNTO 0);
-		MULOp_ctrl_o     	: OUT	STD_LOGIC   -- New control output
+		MULOp_ctrl_o     	: OUT	STD_LOGIC;  -- New control output
+
+		--Division accelerator control
+		DIVOp_ctrl_o		: OUT	STD_LOGIC;	-- any of div/divu/rem/remu
+		DIVSigned_ctrl_o	: OUT	STD_LOGIC;	-- div/rem  (signed operands)
+		DIVRem_ctrl_o		: OUT	STD_LOGIC	-- rem/remu (write back the residue)
 	);
 END control;
 
@@ -39,6 +44,7 @@ ARCHITECTURE behavior OF control IS
 	SIGNAL	beq_w, bne_w, blt_w, bge_w, bltu_w, bgeu_w, branch_w, jal_w, jalr_w 				: STD_LOGIC;
 	SIGNAL	add_w, addi_w, and_w, andi_w, or_w, ori_w, sll_w, slli_w, sra_w, srai_w, mul_w		: STD_LOGIC;  -- New mul_w signal
 	SIGNAL	srl_w, srli_w, sub_w, xor_w, xori_w, auipc_w, lui_w, slt_w, slti_w, sltu_w, sltiu_w	: STD_LOGIC;
+	SIGNAL	div_w, divu_w, rem_w, remu_w, divop_w												: STD_LOGIC;  -- New division signals
 	SIGNAL  opc_w : STD_LOGIC_VECTOR(6 DOWNTO 0);
 
 BEGIN           
@@ -122,9 +128,21 @@ BEGIN
 	sltiu_w 	<=	'1' WHEN	(instruction_i and INST_SLTIU_MASK) = INST_SLTIU		ELSE	'0';	-- sltiu
 	
 	mul_w		<=  '1' WHEN 	(instruction_i and INST_MUL_MASK) = INST_MUL			ELSE	'0';	-- mul
-	
-	
-	
+
+	div_w		<=  '1' WHEN 	(instruction_i and INST_DIV_MASK) = INST_DIV			ELSE	'0';	-- div
+
+	divu_w		<=  '1' WHEN 	(instruction_i and INST_DIVU_MASK) = INST_DIVU			ELSE	'0';	-- divu
+
+	rem_w		<=  '1' WHEN 	(instruction_i and INST_REM_MASK) = INST_REM			ELSE	'0';	-- rem
+
+	remu_w		<=  '1' WHEN 	(instruction_i and INST_REMU_MASK) = INST_REMU			ELSE	'0';	-- remu
+
+	-- All four share opcode RTYPE and funct7=0000001, so they are already
+	-- covered by Rtype_w for RegWrite/ALUSrc. ALUOp_ctrl_o falls through to
+	-- ALU_NONE for them and the accelerator result replaces the ALU result.
+	divop_w		<=	div_w or divu_w or rem_w or remu_w;								--Division
+
+
 	RegWrite_ctrl_o 	<=  Rtype_w or Itype_w or Utype_w or UJtype_w;
 	MemtoReg_ctrl_o 	<=  ld_w;
 	MemWrite_ctrl_o 	<=  st_w; 
@@ -135,7 +153,10 @@ BEGIN
 	RegDst_ctrl_o		<=	jal_w or jalr_w;
 	ALUSrc_ctrl_o  		<=  Itype_w or Stype_w or Utype_w or UJtype_w;
 	MULOp_ctrl_o		<=  mul_w;
-	
+	DIVOp_ctrl_o		<=	divop_w;
+	DIVSigned_ctrl_o	<=	div_w or rem_w;
+	DIVRem_ctrl_o		<=	rem_w or remu_w;
+
 	UpperIm_ctrl_o		<=	"01" 	WHEN 	auipc_w 	ELSE
 							"10" 	WHEN	lui_w		ELSE
 							"00";

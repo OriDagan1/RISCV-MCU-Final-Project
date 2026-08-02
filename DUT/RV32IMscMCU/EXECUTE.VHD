@@ -25,6 +25,8 @@ ENTITY  Execute IS
 		ALUOp_ctrl_i	: IN 	STD_LOGIC_VECTOR(4 DOWNTO 0);
 		ALUSrc_ctrl_i 	: IN 	STD_LOGIC;
 		MULOp_ctrl_i	: IN 	STD_LOGIC;		-- New input
+		DIVOp_ctrl_i	: IN 	STD_LOGIC;		-- New input - select the accelerator result
+		div_res_i		: IN 	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
 		pc_i			: IN 	STD_LOGIC_VECTOR(PC_WIDTH-1 DOWNTO 0);
 			
 		--Outputs
@@ -310,7 +312,13 @@ BEGIN
 END PROCESS;
 	
 --------------------------------------------------------------------------------------------------------
-alu_res_o	<= mult_res_w WHEN MULOp_ctrl_i = '1' ELSE alu_res_r;
+-- Result mux. The division accelerator lives outside this module because it
+-- is multicycle and needs both clocks, but its result joins the same write-
+-- back bus as the ALU and the multiplier. ALUOp is ALU_NONE for the division
+-- instructions, so alu_res_r would otherwise be zero.
+alu_res_o	<= 	mult_res_w	WHEN MULOp_ctrl_i = '1' ELSE
+				div_res_i	WHEN DIVOp_ctrl_i = '1' ELSE
+				alu_res_r;
 brTaken_o	<= brTaken_w;
  
 END struct;
