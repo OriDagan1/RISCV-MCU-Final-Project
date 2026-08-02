@@ -100,8 +100,8 @@ BEGIN
 	-- toggle flip-flop, so the accelerator runs at twice the CPU rate. This
 	-- replaces the supplied ALTPLL, which is a Cyclone II megafunction and is
 	-- not supported on the Cyclone V of the DE10-Standard. The 2:1 ratio is
-	-- the one the PLL was configured for (G_PLL_DIV=2, G_PLL_MUL=1), so the
-	-- CPU sees the same clock it always saw.
+	-- the one that PLL was configured for, so the CPU sees the same clock it
+	-- always saw.
 	--
 	-- MCLK is a derived clock, so the .sdc needs a create_generated_clock on
 	-- mclk_q for Quartus to time it properly.

@@ -60,9 +60,10 @@ package cond_compilation_package is
 	-- the DTCM (0x0000-0x1FFF) from memory-mapped I/O (0x2000-0x3FFF).
 	-- MCU.vhd owns the decode; the core just presents the full byte address.
 	constant G_DA_WIDTH 				: integer := MA_WIDTH_TCM8KiB + 1;	-- 14
-	constant G_PLL_DIV		 			: NATURAL	:= 2;											-- relavant only when G_MODELSIM=0
-	constant G_PLL_MUL		 			: NATURAL	:= 1;											-- relavant only when G_MODELSIM=0 	
-	
+	-- G_PLL_DIV and G_PLL_MUL are gone with PLL.vhd. MCU.vhd derives MCLK
+	-- from clk_i with a toggle flip-flop, which is the same divide-by-2 the
+	-- PLL was configured for.
+
 -- Explanation:
 -----------------------------------------------------------
 --	if G_MODELSIM=1 then 

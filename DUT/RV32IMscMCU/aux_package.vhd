@@ -225,8 +225,8 @@ package aux_package is
 -- The PLL component declaration was removed with the ALTPLL it wrapped:
 -- that is a Cyclone II megafunction and is unsupported on the Cyclone V of
 -- the DE10-Standard. MCU.vhd derives MCLK from clk_i with a toggle
--- flip-flop instead. PLL.vhd stays in DUT/ for reference but is not
--- compiled and not instantiated.
+-- flip-flop instead. PLL.vhd has been deleted; it is in git history if
+-- it is ever needed again.
 ---------------------------------------------------------
 	COMPONENT multiplier IS
 		PORT(

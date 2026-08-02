@@ -55,10 +55,9 @@ echo "-------------------------------------------------"
 echo " compile OK"
 echo "-------------------------------------------------"
 
-# NOTE: PLL.vhd is deliberately NOT compiled. The ALTPLL it wraps is a
-# Cyclone II megafunction and is not supported on the Cyclone V of the
-# DE10-Standard; RV32I_CORE derives MCLK from clk_i with a toggle flip-flop
-# instead. The file is kept in DUT/ only for reference.
+# NOTE: there is no PLL. The supplied PLL.vhd wrapped an ALTPLL, a Cyclone
+# II megafunction unsupported on the Cyclone V of the DE10-Standard, and has
+# been deleted; MCU.vhd derives MCLK from clk_i with a toggle flip-flop.
 #
 # NOTE: ModelSim 20.1 cannot open a path containing non-ASCII characters,
 # and the project lives under a Hebrew directory name. Reach it through an
