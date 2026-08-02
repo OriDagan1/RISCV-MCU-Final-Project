@@ -19,7 +19,9 @@ package aux_package is
 			PC_WIDTH 					: integer 	:= 10;
 			MA_WIDTH 					: integer 	:= 10;
 			DATA_WORDS_NUM 		: integer 	:= G_DATA_WORDSNUM;
-			CLK_CNT_WIDTH 		: integer 	:= 16
+			CLK_CNT_WIDTH 		: integer 	:= 16;
+			ITCM_INIT_FILE		: string	:= "C:\Users\oripa\Documents\Benchmark_Apps\test3\RV32IM\bin\M9K-intel\ITCM.hex";
+			DTCM_INIT_FILE		: string	:= "C:\Users\oripa\Documents\Benchmark_Apps\test3\RV32IM\bin\M9K-intel\DTCM.hex"
 		);
 		PORT(	
 			--Inputs
@@ -66,7 +68,12 @@ package aux_package is
 		Jalr_ctrl_o 		: OUT 	STD_LOGIC;
 		UpperIm_ctrl_o		: OUT 	STD_LOGIC_VECTOR(1 DOWNTO 0);
 		ALUOp_ctrl_o	 	: OUT 	STD_LOGIC_VECTOR(4 DOWNTO 0);
-		MULOp_ctrl_o     	: OUT	STD_LOGIC   -- New control output
+		MULOp_ctrl_o     	: OUT	STD_LOGIC;  -- New control output
+
+		--Division accelerator control
+		DIVOp_ctrl_o		: OUT	STD_LOGIC;	-- any of div/divu/rem/remu
+		DIVSigned_ctrl_o	: OUT	STD_LOGIC;	-- div/rem  (signed operands)
+		DIVRem_ctrl_o		: OUT	STD_LOGIC	-- rem/remu (write back the residue)
 	);
 	end component;
 ---------------------------------------------------------	
@@ -74,7 +81,8 @@ package aux_package is
 		generic(
 			DATA_BUS_WIDTH 	: integer := 32;
 			DTCM_ADDR_WIDTH : integer := 8;
-			WORDS_NUM 			: integer := 256
+			WORDS_NUM 			: integer := 256;
+			DTCM_INIT_FILE	: string  := "C:\Users\oripa\Documents\Benchmark_Apps\test3\RV32IM\bin\M9K-intel\DTCM.hex"
 		);
 		PORT(	
 			--Inputs
@@ -105,7 +113,9 @@ package aux_package is
 			ALUSrc_ctrl_i 		: IN 	STD_LOGIC;
 			pc_i				: IN 	STD_LOGIC_VECTOR(PC_WIDTH-1 DOWNTO 0);
 			MULOp_ctrl_i		: IN  	STD_LOGIC;
-				
+			DIVOp_ctrl_i		: IN  	STD_LOGIC;
+			div_res_i			: IN 	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+
 			--Outputs
 			brTaken_o 			: OUT	STD_LOGIC;
 			alu_res_o 			: OUT	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
@@ -143,7 +153,8 @@ package aux_package is
 			DATA_BUS_WIDTH 		: integer	:= 32;
 			PC_WIDTH 					: integer	:= 10;
 			ITCM_ADDR_WIDTH 	: integer	:= 8;
-			WORDS_NUM 				: integer	:= 256
+			WORDS_NUM 				: integer	:= 256;
+			ITCM_INIT_FILE		: string	:= "C:\Users\oripa\Documents\Benchmark_Apps\test3\RV32IM\bin\M9K-intel\ITCM.hex"
 		);
 		PORT(
 			--Inputs
@@ -155,7 +166,8 @@ package aux_package is
 			Jal_ctrl_i		: IN 	STD_LOGIC;
 			Jalr_ctrl_i		: IN 	STD_LOGIC;
 			alu_res_i 		: IN 	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
-			
+			stall_i				: IN 	STD_LOGIC;
+
 			--Outputs
 			pc_o 					: OUT	STD_LOGIC_VECTOR(PC_WIDTH-1 DOWNTO 0);
 			pc_plus4_o 		: OUT	STD_LOGIC_VECTOR(PC_WIDTH-1 DOWNTO 0);
@@ -177,6 +189,27 @@ package aux_package is
 			Ain: IN std_logic_vector(15 downto 0);
 			Bin: IN std_logic_vector(15 downto 0);
 			Res: OUT std_logic_vector(31 downto 0)
+		);
+	END COMPONENT;
+---------------------------------------------------------
+	COMPONENT div_accel IS
+		generic(
+			N : positive := 32
+		);
+		PORT(
+			--CPU side, MCLK domain only
+			mclk_i			: IN 	STD_LOGIC;
+			rst_i				: IN 	STD_LOGIC;
+			Ain_i				: IN 	STD_LOGIC_VECTOR(N-1 DOWNTO 0);
+			Bin_i				: IN 	STD_LOGIC_VECTOR(N-1 DOWNTO 0);
+			div_op_i		: IN 	STD_LOGIC;
+
+			Quotient_o	: OUT	STD_LOGIC_VECTOR(N-1 DOWNTO 0);
+			Residue_o		: OUT	STD_LOGIC_VECTOR(N-1 DOWNTO 0);
+			div_busy_o	: OUT	STD_LOGIC;
+
+			--Accelerator clock
+			divclk_i		: IN 	STD_LOGIC
 		);
 	END COMPONENT;
 

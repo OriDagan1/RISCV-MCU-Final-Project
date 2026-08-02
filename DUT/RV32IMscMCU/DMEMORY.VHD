@@ -15,7 +15,10 @@ ENTITY dmemory IS
 	generic(
 		DATA_BUS_WIDTH 		: integer := 32;
 		DTCM_ADDR_WIDTH 	: integer := 8;
-		WORDS_NUM 			: integer := 256
+		WORDS_NUM 			: integer := 256;
+		-- Benchmark image. Override from the testbench (or with vsim -g) so
+		-- switching application does not mean editing this file.
+		DTCM_INIT_FILE		: string  := "C:\Users\oripa\Documents\Benchmark_Apps\test3\RV32IM\bin\M9K-intel\DTCM.hex"
 	);
 	PORT(	
 		--Inputs
@@ -46,7 +49,7 @@ BEGIN
 		lpm_hint 						=> "ENABLE_RUNTIME_MOD = YES,INSTANCE_NAME = DTCM",
 		lpm_type 						=> "altsyncram",
 		outdata_reg_a 					=> "UNREGISTERED",
-		init_file 						=> "C:\Users\oripa\Documents\Benchmark_Apps\test3\RV32IM\bin\M9K-intel\DTCM.hex",  -- Change path for data file
+		init_file 						=> DTCM_INIT_FILE,
 		intended_device_family 			=> "Cyclone"
 	)
 	PORT MAP (

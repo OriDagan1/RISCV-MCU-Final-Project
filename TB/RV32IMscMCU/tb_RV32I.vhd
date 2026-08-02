@@ -20,7 +20,11 @@ ENTITY tb_RV32I IS
 		PC_WIDTH 					: integer 	:= G_PC_WIDTH;
 		MA_WIDTH 					: integer 	:= G_MA_WIDTH;
 		DATA_WORDS_NUM 		: integer 	:= G_DATA_WORDSNUM;
-		CLK_CNT_WIDTH 		: integer 	:= 16
+		CLK_CNT_WIDTH 		: integer 	:= 16;
+		-- Benchmark under test. Override on the command line, e.g.
+		--   vsim -gITCM_INIT_FILE=<path>\ITCM.hex -gDTCM_INIT_FILE=<path>\DTCM.hex work.tb_RV32I
+		ITCM_INIT_FILE		: string	:= "C:\Users\oripa\Documents\Benchmark_Apps\test3\RV32IM\bin\M9K-intel\ITCM.hex";
+		DTCM_INIT_FILE		: string	:= "C:\Users\oripa\Documents\Benchmark_Apps\test3\RV32IM\bin\M9K-intel\DTCM.hex"
 	);
 END tb_RV32I ;
 
@@ -62,7 +66,9 @@ BEGIN
 		PC_WIDTH					=> PC_WIDTH,
 		MA_WIDTH					=> MA_WIDTH,
 		DATA_WORDS_NUM		=> DATA_WORDS_NUM,
-		CLK_CNT_WIDTH			=> CLK_CNT_WIDTH
+		CLK_CNT_WIDTH			=> CLK_CNT_WIDTH,
+		ITCM_INIT_FILE		=> ITCM_INIT_FILE,
+		DTCM_INIT_FILE		=> DTCM_INIT_FILE
 	)
 	PORT MAP (
 		--Inputs
