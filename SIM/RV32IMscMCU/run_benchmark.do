@@ -36,7 +36,11 @@ quietly set GOLDEN "$APP/output/RARS/DTCM.h"
 #=============================================================================
 
 # "quietly" throughout: a bare "set" echoes its value and buries the results.
-quietly set ITCM "/tb_RV32I/CORE/IFE/inst_memory/MEMORY/m_mem_data_a"
+# Hierarchy since Sprint 0: tb -> MCU (instance CORE) -> RV32I_CORE (CPU).
+# The MCU instance keeps the label CORE so the DTCM path is unchanged from
+# the dumps produced before the split.
+quietly set CPU  "/tb_RV32I/CORE/CPU"
+quietly set ITCM "$CPU/IFE/inst_memory/MEMORY/m_mem_data_a"
 quietly set DTCM "/tb_RV32I/CORE/MEM/data_memory/MEMORY/m_mem_data_a"
 
 #-----------------------------------------------------------------------------
@@ -106,13 +110,13 @@ add wave -divider {Write-back}
 add wave             /tb_RV32I/RegWrite_ctrl_o
 add wave -radix hex  /tb_RV32I/write_data_o
 add wave -divider {Divider accelerator}
-add wave             /tb_RV32I/CORE/div_op_w
-add wave             /tb_RV32I/CORE/div_busy_w
-add wave -radix dec  /tb_RV32I/CORE/div_ain_w
-add wave -radix dec  /tb_RV32I/CORE/div_bin_w
-add wave -radix dec  /tb_RV32I/CORE/div_quot_w
-add wave -radix dec  /tb_RV32I/CORE/div_rsdu_w
-add wave -radix dec  /tb_RV32I/CORE/div_res_w
+add wave             $CPU/div_op_w
+add wave             $CPU/div_busy_w
+add wave -radix dec  $CPU/div_ain_w
+add wave -radix dec  $CPU/div_bin_w
+add wave -radix dec  $CPU/div_quot_w
+add wave -radix dec  $CPU/div_rsdu_w
+add wave -radix dec  $CPU/div_res_w
 add wave -divider {Memory}
 add wave             /tb_RV32I/MemWrite_ctrl_o
 add wave -radix hex  /tb_RV32I/dtcm_addr_o

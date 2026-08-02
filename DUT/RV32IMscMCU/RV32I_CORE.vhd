@@ -21,38 +21,44 @@ ENTITY RV32I_CORE IS
 		PC_WIDTH 			: integer 	:= G_PC_WIDTH;
 		MA_WIDTH 			: integer 	:= G_MA_WIDTH;
 		DATA_WORDS_NUM 		: integer 	:= G_DATA_WORDSNUM;
+		DA_WIDTH			: integer 	:= G_DA_WIDTH;
 		CLK_CNT_WIDTH 		: integer 	:= 16;
-		-- Benchmark images, overridable so switching application does not
-		-- mean editing IFETCH/DMEMORY.
-		ITCM_INIT_FILE		: string	:= "C:\Users\oripa\Documents\Benchmark_Apps\test3\RV32IM\bin\M9K-intel\ITCM.hex";
-		DTCM_INIT_FILE		: string	:= "C:\Users\oripa\Documents\Benchmark_Apps\test3\RV32IM\bin\M9K-intel\DTCM.hex"
+		-- ITCM image, overridable so switching application does not mean
+		-- editing IFETCH.
+		ITCM_INIT_FILE		: string	:= "C:\Users\oripa\Documents\Benchmark_Apps\test3\RV32IM\bin\M9K-intel\ITCM.hex"
 	);
-	PORT(	
+	PORT(
 		--Inputs
 		rst_i		 		:IN	STD_LOGIC;
-		clk_i				:IN	STD_LOGIC;
-		
+		mclk_i				:IN	STD_LOGIC;	-- CPU clock
+		divclk_i			:IN	STD_LOGIC;	-- accelerator clock, faster than mclk
+
+		--Data bus, master side. The core drives a byte address over the whole
+		--data address space of Figure 2 and does not know what answers it:
+		--MCU.vhd decodes DTCM against memory-mapped I/O.
+		dtcm_data_rd_i		:IN 	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+
+		dtcm_addr_o			:OUT 	STD_LOGIC_VECTOR(DA_WIDTH-1 DOWNTO 0);
+		dtcm_data_wr_o		:OUT 	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+		MemRead_ctrl_o		:OUT 	STD_LOGIC;
+		MemWrite_ctrl_o		:OUT 	STD_LOGIC;
+
 		--Outputs (used also for Signal-Tap auxiliary pins)
 		pc_o				:OUT	STD_LOGIC_VECTOR(PC_WIDTH-1 DOWNTO 0);
 		instruction_o		:OUT	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
-		
+
 		RegWrite_ctrl_o		:OUT 	STD_LOGIC;
-		MemWrite_ctrl_o		:OUT 	STD_LOGIC;
 		Branch_ctrl_o		:OUT 	STD_LOGIC;
-		
+
 		read_data1_o 		:OUT	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
 		read_data2_o 		:OUT	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
 		write_data_o		:OUT	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
-		
-		alu_res_o 			:OUT	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);															
-		brTaken_o			:OUT 	STD_LOGIC; 
-		
-		dtcm_addr_o			:OUT 	STD_LOGIC_VECTOR(DTCM_ADDR_WIDTH-1 DOWNTO 0);
-		dtcm_data_wr_o		:OUT 	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
-		dtcm_data_rd_o		:OUT 	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
-		
+
+		alu_res_o 			:OUT	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+		brTaken_o			:OUT 	STD_LOGIC;
+
 		mclk_cnt_o			:OUT	STD_LOGIC_VECTOR(CLK_CNT_WIDTH-1 DOWNTO 0)
-	);		
+	);
 END RV32I_CORE;
 --============================================================================
 ARCHITECTURE structure OF RV32I_CORE IS
@@ -64,8 +70,7 @@ ARCHITECTURE structure OF RV32I_CORE IS
 	SIGNAL sign_extend_w 	: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
 	SIGNAL addr_gen_w 		: STD_LOGIC_VECTOR(PC_WIDTH-1 DOWNTO 0);
 	SIGNAL alu_res_w 		: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
-	SIGNAL dtcm_data_rd_w 	: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
-	SIGNAL dtcm_addr_w 		: STD_LOGIC_VECTOR(DTCM_ADDR_WIDTH-1 DOWNTO 0);
+	SIGNAL dtcm_addr_w 		: STD_LOGIC_VECTOR(DA_WIDTH-1 DOWNTO 0);
 	SIGNAL alu_src_w 		: STD_LOGIC;
 	SIGNAL branch_w 		: STD_LOGIC;
 	SIGNAL Jal_ctrl_w 		: STD_LOGIC;
@@ -79,9 +84,6 @@ ARCHITECTURE structure OF RV32I_CORE IS
 	SIGNAL upper_im_w		: STD_LOGIC_VECTOR(1 DOWNTO 0);
 	SIGNAL alu_op_w 		: STD_LOGIC_VECTOR(4 DOWNTO 0);
 	SIGNAL instruction_w	: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
-	SIGNAL mclk_w 			: STD_LOGIC;
-	SIGNAL divclk_w			: STD_LOGIC;
-	SIGNAL mclk_q			: STD_LOGIC;
 	SIGNAL mclk_cnt_q		: STD_LOGIC_VECTOR(CLK_CNT_WIDTH-1 DOWNTO 0);
 
 	SIGNAL mul_op_w			: STD_LOGIC;
@@ -109,32 +111,6 @@ ARCHITECTURE structure OF RV32I_CORE IS
 
 BEGIN
 
-	--=======================================
-	-- Clock generation
-	--
-	-- DIVCLK is the incoming board clock; MCLK is derived from it by a single
-	-- toggle flip-flop, so the accelerator runs at twice the CPU rate. This
-	-- replaces the supplied ALTPLL, which is a Cyclone II megafunction and is
-	-- not supported on the Cyclone V of the DE10-Standard. The 2:1 ratio is
-	-- the one the PLL was configured for (G_PLL_DIV=2, G_PLL_MUL=1), so the
-	-- CPU sees the same clock it saw before.
-	--
-	-- TODO(Sprint 0): this block moves to MCU.vhd along with the DTCM, and
-	-- the core then takes mclk and divclk as ports instead of deriving them.
-	--=======================================
-	divclk_w <= clk_i;
-
-	CLKDIV:
-	process (clk_i, rst_i)
-	begin
-		if rst_i = '1' then
-			mclk_q	<= '0';
-		elsif rising_edge(clk_i) then
-			mclk_q	<= NOT mclk_q;
-		end if;
-	end process;
-
-	mclk_w <= mclk_q;
 	--===========================================
 	-- IFETCH (including ITCM) module connection
 	--===========================================
@@ -149,7 +125,7 @@ BEGIN
 	)
 	PORT MAP (
 		--Inputs
-		clk_i 					=> mclk_w,  
+		clk_i 					=> mclk_i,  
 		rst_i 					=> rst_i, 
 		addr_gen_i 			=> addr_gen_w,
 		Branch_ctrl_i 	=> branch_w,
@@ -174,11 +150,11 @@ BEGIN
 	)
 	PORT MAP (	
 		--Inputs
-		clk_i 				=> mclk_w,  
+		clk_i 				=> mclk_i,  
 		rst_i 				=> rst_i,
 		pc_plus4_i	 		=> pc_plus4_w,
 		instruction_i 		=> instruction_w,
-		dtcm_data_rd_i 		=> dtcm_data_rd_w,
+		dtcm_data_rd_i 		=> dtcm_data_rd_i,
 		alu_res_i 			=> alu_res_w,
 		RegDst_ctrl_i		=> reg_dst_w,
 		RegWrite_ctrl_i 	=> reg_write_gated_w,
@@ -259,12 +235,12 @@ BEGIN
 	)
 	PORT MAP (
 		--Inputs
-		mclk_i				=> mclk_w,
+		mclk_i				=> mclk_i,
 		rst_i				=> rst_i,
 		Ain_i				=> div_ain_w,
 		Bin_i				=> div_bin_w,
 		div_op_i			=> div_op_w,
-		divclk_i			=> divclk_w,
+		divclk_i			=> divclk_i,
 
 		--Outputs
 		Quotient_o			=> div_quot_w,
@@ -302,43 +278,22 @@ BEGIN
 	mem_write_gated_w	<= mem_write_w AND NOT div_busy_w;
 
 	--=======================================
-	-- DTCM module connection
+	-- Data bus, master side
 	--=======================================
-	G1:
-	if (WORD_GRANULARITY = True) generate -- i.e. each WORD has a unike address
-		dtcm_addr_w	<= alu_res_w(MA_WIDTH-1 DOWNTO 2); -- increment memory address by 4;
-	elsif (WORD_GRANULARITY = False) generate -- i.e. each BYTE has a unike address
-		dtcm_addr_w	<= alu_res_w(MA_WIDTH-1 DOWNTO 0);
-	end generate;
-	
-	MEM:  dmemory
-	generic map(
-		DATA_BUS_WIDTH		=> 	DATA_BUS_WIDTH, 
-		DTCM_ADDR_WIDTH		=> 	DTCM_ADDR_WIDTH,
-		WORDS_NUM					=>	DATA_WORDS_NUM,
-		DTCM_INIT_FILE		=>	DTCM_INIT_FILE
-	)
-	PORT MAP (	
-		--Inputs
-		clk_i 				=> mclk_w,  
-		rst_i 				=> rst_i,
-		dtcm_addr_i 		=> dtcm_addr_w,
-		dtcm_data_wr_i 		=> read_data2_w,
-		MemRead_ctrl_i 		=> mem_read_w,
-		MemWrite_ctrl_i 	=> mem_write_gated_w,
-				
-		--Outputs
-		dtcm_data_rd_o 		=> dtcm_data_rd_w 
-	);	
-	
+	-- The core presents the full byte address of Figure 2's data address
+	-- space. Selecting the DTCM against memory-mapped I/O, and turning the
+	-- byte address into whatever each slave wants, is MCU.vhd's job - the
+	-- CPU has no business knowing which device answers.
+	dtcm_addr_w	<= alu_res_w(DA_WIDTH-1 DOWNTO 0);
+
 	--=======================================
 	-- MCLK counter register connection
 	--=======================================									
-	process (mclk_w , rst_i)
+	process (mclk_i , rst_i)
 	begin
 		if rst_i = '1' then
 			mclk_cnt_q	<=	(others	=> '0');
-		elsif rising_edge(mclk_w) then
+		elsif rising_edge(mclk_i) then
 			mclk_cnt_q	<=	mclk_cnt_q + '1';
 		end if;
 	end process;
@@ -349,21 +304,21 @@ BEGIN
 	instruction_o 		<= 	instruction_w;							-- IFETCH output
 	
 	RegWrite_ctrl_o 	<= 	reg_write_gated_w;						-- CONTROL output, stall applied
-	MemWrite_ctrl_o 	<= 	mem_write_gated_w;						-- CONTROL output, stall applied
 	Branch_ctrl_o 		<= 	branch_w;								-- CONTROL output
 	  
 	read_data1_o 		<= 	read_data1_w;							-- IDECODE output
 	read_data2_o 		<= 	read_data2_w;							-- IDECODE output
-	write_data_o  		<= 	dtcm_data_rd_w WHEN MemtoReg_w = '1' 
+	write_data_o  		<= 	dtcm_data_rd_i WHEN MemtoReg_w = '1' 
 													ELSE alu_res_w; -- IDECODE input(Write-Back) 
 	
 	alu_res_o 			<= 	alu_res_w;								-- EXECUTE output			
 	brTaken_o 			<= 	brTaken_w;								-- EXECUTE output
   
-	dtcm_addr_o 		<= 	dtcm_addr_w;							-- DMEMORY input
-	dtcm_data_wr_o 		<= 	read_data2_w;							-- DMEMORY input
-	dtcm_data_rd_o		<=	dtcm_data_rd_w;							-- DMEMORY output
-	
+	dtcm_addr_o 		<= 	dtcm_addr_w;							-- data bus, byte address
+	dtcm_data_wr_o 		<= 	read_data2_w;							-- data bus, write data
+	MemRead_ctrl_o		<=	mem_read_w;								-- CONTROL output
+	MemWrite_ctrl_o 	<= 	mem_write_gated_w;						-- CONTROL output, stall applied
+
 	mclk_cnt_o			<=	mclk_cnt_q;								-- TOP output
 	
 ---------------------------------------------------------------------------------------

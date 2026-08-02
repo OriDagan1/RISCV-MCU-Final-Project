@@ -9,8 +9,51 @@ USE work.cond_compilation_package.all;
 
 package aux_package is
 
+	component MCU is
+		generic(
+			WORD_GRANULARITY 	: boolean 	:= G_WORD_GRANULARITY;
+			MODELSIM 					: integer 	:= G_MODELSIM;
+			DATA_BUS_WIDTH 		: integer 	:= 32;
+			ITCM_ADDR_WIDTH 	: integer 	:= G_ADDRWIDTH;
+			DTCM_ADDR_WIDTH 	: integer 	:= G_ADDRWIDTH;
+			PC_WIDTH 					: integer 	:= G_PC_WIDTH;
+			MA_WIDTH 					: integer 	:= G_MA_WIDTH;
+			DATA_WORDS_NUM 		: integer 	:= G_DATA_WORDSNUM;
+			DA_WIDTH					: integer 	:= G_DA_WIDTH;
+			CLK_CNT_WIDTH 		: integer 	:= 16;
+			ITCM_INIT_FILE		: string	:= "C:\Users\oripa\Documents\Benchmark_Apps\test3\RV32IM\bin\M9K-intel\ITCM.hex";
+			DTCM_INIT_FILE		: string	:= "C:\Users\oripa\Documents\Benchmark_Apps\test3\RV32IM\bin\M9K-intel\DTCM.hex"
+		);
+		PORT(
+			--Inputs
+			rst_i		 					:IN	STD_LOGIC;
+			clk_i							:IN	STD_LOGIC;
+
+			--Outputs (used also for Signal-Tap auxiliary pins)
+			pc_o							:OUT	STD_LOGIC_VECTOR(PC_WIDTH-1 DOWNTO 0);
+			instruction_o			:OUT	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+
+			RegWrite_ctrl_o		:OUT 	STD_LOGIC;
+			MemWrite_ctrl_o		:OUT 	STD_LOGIC;
+			Branch_ctrl_o			:OUT 	STD_LOGIC;
+
+			read_data1_o 			:OUT	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+			read_data2_o 			:OUT	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+			write_data_o			:OUT	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+
+			alu_res_o 				:OUT	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+			brTaken_o					:OUT 	STD_LOGIC;
+
+			dtcm_addr_o				:OUT 	STD_LOGIC_VECTOR(DA_WIDTH-1 DOWNTO 0);
+			dtcm_data_wr_o		:OUT 	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+			dtcm_data_rd_o		:OUT 	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+
+			mclk_cnt_o				:OUT	STD_LOGIC_VECTOR(CLK_CNT_WIDTH-1 DOWNTO 0)
+		);
+	end component;
+---------------------------------------------------------
 	component RV32I_CORE is
-		generic( 
+		generic(
 			WORD_GRANULARITY 	: boolean 	:= G_WORD_GRANULARITY;
 	    MODELSIM 					: integer 	:= G_MODELSIM;
 			DATA_BUS_WIDTH 		: integer 	:= 32;
@@ -19,36 +62,40 @@ package aux_package is
 			PC_WIDTH 					: integer 	:= 10;
 			MA_WIDTH 					: integer 	:= 10;
 			DATA_WORDS_NUM 		: integer 	:= G_DATA_WORDSNUM;
+			DA_WIDTH					: integer 	:= G_DA_WIDTH;
 			CLK_CNT_WIDTH 		: integer 	:= 16;
-			ITCM_INIT_FILE		: string	:= "C:\Users\oripa\Documents\Benchmark_Apps\test3\RV32IM\bin\M9K-intel\ITCM.hex";
-			DTCM_INIT_FILE		: string	:= "C:\Users\oripa\Documents\Benchmark_Apps\test3\RV32IM\bin\M9K-intel\DTCM.hex"
+			ITCM_INIT_FILE		: string	:= "C:\Users\oripa\Documents\Benchmark_Apps\test3\RV32IM\bin\M9K-intel\ITCM.hex"
 		);
-		PORT(	
+		PORT(
 			--Inputs
 			rst_i		 					:IN	STD_LOGIC;
-			clk_i							:IN	STD_LOGIC;
-			
+			mclk_i						:IN	STD_LOGIC;
+			divclk_i					:IN	STD_LOGIC;
+
+			--Data bus, master side
+			dtcm_data_rd_i		:IN 	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+
+			dtcm_addr_o				:OUT 	STD_LOGIC_VECTOR(DA_WIDTH-1 DOWNTO 0);
+			dtcm_data_wr_o		:OUT 	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+			MemRead_ctrl_o		:OUT 	STD_LOGIC;
+			MemWrite_ctrl_o		:OUT 	STD_LOGIC;
+
 			--Outputs (used also for Signal-Tap auxiliary pins)
 			pc_o							:OUT	STD_LOGIC_VECTOR(PC_WIDTH-1 DOWNTO 0);
 			instruction_o			:OUT	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
-			
+
 			RegWrite_ctrl_o		:OUT 	STD_LOGIC;
-			MemWrite_ctrl_o		:OUT 	STD_LOGIC;
 			Branch_ctrl_o			:OUT 	STD_LOGIC;
-			
+
 			read_data1_o 			:OUT	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
 			read_data2_o 			:OUT	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
 			write_data_o			:OUT	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
-			
-			alu_res_o 				:OUT	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);															
-			brTaken_o					:OUT 	STD_LOGIC; 
-			
-			dtcm_addr_o				:OUT 	STD_LOGIC_VECTOR(DTCM_ADDR_WIDTH-1 DOWNTO 0);
-			dtcm_data_wr_o		:OUT 	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
-			dtcm_data_rd_o		:OUT STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
-			
+
+			alu_res_o 				:OUT	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+			brTaken_o					:OUT 	STD_LOGIC;
+
 			mclk_cnt_o				:OUT	STD_LOGIC_VECTOR(CLK_CNT_WIDTH-1 DOWNTO 0)
-		);		
+		);
 	end component;
 ---------------------------------------------------------  
 	component control is
@@ -175,15 +222,12 @@ package aux_package is
 		);
 	end component;
 ---------------------------------------------------------
-	COMPONENT PLL IS
-		port(
-			areset		: IN STD_LOGIC  := '0';
-			inclk0		: IN STD_LOGIC  := '0';
-			c0     		: OUT STD_LOGIC ;
-			locked		: OUT STD_LOGIC 
-		);
-  END COMPONENT;
----------------------------------------------------------	
+-- The PLL component declaration was removed with the ALTPLL it wrapped:
+-- that is a Cyclone II megafunction and is unsupported on the Cyclone V of
+-- the DE10-Standard. MCU.vhd derives MCLK from clk_i with a toggle
+-- flip-flop instead. PLL.vhd stays in DUT/ for reference but is not
+-- compiled and not instantiated.
+---------------------------------------------------------
 	COMPONENT multiplier IS
 		PORT(
 			Ain: IN std_logic_vector(15 downto 0);

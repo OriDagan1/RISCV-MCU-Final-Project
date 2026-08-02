@@ -39,6 +39,7 @@ foreach f [list \
 	$DUT/EXECUTE.VHD                  \
 	$DUT/DMEMORY.VHD                  \
 	$DUT/RV32I_CORE.vhd               \
+	$DUT/MCU.vhd                      \
 	$TB/tb_RV32I.vhd                  \
 	$TB/tb_divider.vhd                \
 	$TB/tb_cdc_sync.vhd               \

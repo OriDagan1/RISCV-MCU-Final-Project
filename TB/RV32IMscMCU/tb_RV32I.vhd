@@ -20,6 +20,7 @@ ENTITY tb_RV32I IS
 		PC_WIDTH 					: integer 	:= G_PC_WIDTH;
 		MA_WIDTH 					: integer 	:= G_MA_WIDTH;
 		DATA_WORDS_NUM 		: integer 	:= G_DATA_WORDSNUM;
+		DA_WIDTH			: integer 	:= G_DA_WIDTH;
 		CLK_CNT_WIDTH 		: integer 	:= 16;
 		-- Benchmark under test. Override on the command line, e.g.
 		--   vsim -gITCM_INIT_FILE=<path>\ITCM.hex -gDTCM_INIT_FILE=<path>\DTCM.hex work.tb_RV32I
@@ -49,14 +50,16 @@ ARCHITECTURE struct OF tb_RV32I IS
 	SIGNAL alu_res_o 					:	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);															
 	SIGNAL brTaken_o					: STD_LOGIC; 
 	
-	SIGNAL dtcm_addr_o				: STD_LOGIC_VECTOR(DTCM_ADDR_WIDTH-1 DOWNTO 0);
+	SIGNAL dtcm_addr_o				: STD_LOGIC_VECTOR(DA_WIDTH-1 DOWNTO 0);
 	SIGNAL dtcm_data_wr_o			: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
 	SIGNAL dtcm_data_rd_o			: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
 	
 	SIGNAL mclk_cnt_o					:	STD_LOGIC_VECTOR(CLK_CNT_WIDTH-1 DOWNTO 0);
    
 BEGIN
-	CORE : RV32I_CORE
+	-- The DUT is the whole MCU. Since Sprint 0 the core is a bus master with
+	-- no data memory of its own, so it cannot run a program on its own.
+	CORE : MCU
 	generic map(
 		WORD_GRANULARITY 	=> WORD_GRANULARITY,
 	  MODELSIM 					=> MODELSIM,
@@ -66,6 +69,7 @@ BEGIN
 		PC_WIDTH					=> PC_WIDTH,
 		MA_WIDTH					=> MA_WIDTH,
 		DATA_WORDS_NUM		=> DATA_WORDS_NUM,
+		DA_WIDTH					=> DA_WIDTH,
 		CLK_CNT_WIDTH			=> CLK_CNT_WIDTH,
 		ITCM_INIT_FILE		=> ITCM_INIT_FILE,
 		DTCM_INIT_FILE		=> DTCM_INIT_FILE

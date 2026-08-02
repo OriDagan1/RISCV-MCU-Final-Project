@@ -55,6 +55,11 @@ package cond_compilation_package is
 	constant G_PC_WIDTH 				: integer := PC_WIDTH_TCM8KiB;			-- options{PC_WIDTH_TCM1KiB,PC_WIDTH_TCM2KiB,...}
 	constant G_MA_WIDTH 				: integer := MA_WIDTH_TCM8KiB;			-- options{MA_WIDTH_TCM1KiB,MA_WIDTH_TCM2KiB,...}
 	constant DBUS_WIDTH 				: integer	:= 32;
+	-- Width of the byte address the core drives onto the data bus (Figure 2).
+	-- One bit wider than the DTCM itself, so that the top bit distinguishes
+	-- the DTCM (0x0000-0x1FFF) from memory-mapped I/O (0x2000-0x3FFF).
+	-- MCU.vhd owns the decode; the core just presents the full byte address.
+	constant G_DA_WIDTH 				: integer := MA_WIDTH_TCM8KiB + 1;	-- 14
 	constant G_PLL_DIV		 			: NATURAL	:= 2;											-- relavant only when G_MODELSIM=0
 	constant G_PLL_MUL		 			: NATURAL	:= 1;											-- relavant only when G_MODELSIM=0 	
 	
