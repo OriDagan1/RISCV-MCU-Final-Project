@@ -91,12 +91,16 @@ BEGIN
 	SignExt_UJimm_w	<=	ZEROS_IMM12 & UJimm_w WHEN 	not UJimm_w(19) ELSE ONES_IMM12 & UJimm_w;
 
 	
+	-- UTYPE_OPC is "0010111" and "0110111" = "0010111", which is the opcode of
+	-- auipc alone. lui is "0110111" and needs its own choice here, otherwise it
+	-- falls through to the others branch and every lui yields zero.
 	with	opc_w select
 		SignExt_o <=	SignExt_Iimm_w														when ITYPE_OPC,
 									SignExt_Iimm_w														when INST_JALR(6 DOWNTO 0),
 									SignExt_Simm_w														when STYPE_OPC,
 									SignExt_SBimm_w 													when SBTYPE_OPC,
 									SignExt_Uimm_w(19 DOWNTO 0) & ZEROS_IMM12	when UTYPE_OPC,
+									SignExt_Uimm_w(19 DOWNTO 0) & ZEROS_IMM12	when INST_LUI(6 DOWNTO 0),
 									SignExt_UJimm_w														when UJTYPE_OPC,
 									(others => '0')														when others;
 	--==============================================================================
