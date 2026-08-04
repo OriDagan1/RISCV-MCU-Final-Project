@@ -33,6 +33,11 @@ foreach f [list \
 	$DUT/DIV.vhd                      \
 	$DUT/CDC_SYNC.vhd                 \
 	$DUT/DIV_ACCEL.vhd                \
+	$DUT/BT_CLKDIV.vhd                \
+	$DUT/BTCNT.vhd                    \
+	$DUT/BT_OUTPUT_UNIT.vhd           \
+	$DUT/BT_CAPTURE.vhd               \
+	$DUT/BASIC_TIMER.vhd              \
 	$DUT/CONTROL.VHD                  \
 	$DUT/IDECODE.VHD                  \
 	$DUT/IFETCH.VHD                   \
@@ -43,7 +48,9 @@ foreach f [list \
 	$TB/tb_RV32I.vhd                  \
 	$TB/tb_divider.vhd                \
 	$TB/tb_cdc_sync.vhd               \
-	$TB/tb_div_accel.vhd              ] {
+	$TB/tb_div_accel.vhd              \
+	$TB/tb_btcnt.vhd                  \
+	$TB/tb_basic_timer.vhd            ] {
 	echo "vcom $f"
 	if {[catch {vcom -2008 -quiet $f} msg]} {
 		echo "COMPILE FAILED: $f"
