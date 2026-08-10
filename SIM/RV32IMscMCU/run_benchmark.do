@@ -109,6 +109,13 @@ if {$IMAGE eq "M9K"} {
 echo "TCM = [expr {$WORDS*4/1024}] KiB, image set = $IMAGE"
 echo "loaded $IMG"
 
+# The three PLL clocks. Zoom right in to see the 8:1 ratio: DIVCLK ticks
+# eight times per MCLK, which is what cut the division stall to 9 cycles.
+add wave -divider {Clocks}
+add wave             /tb_RV32I/clk_i
+add wave             /tb_RV32I/CORE/mclk_w
+add wave             /tb_RV32I/CORE/divclk_w
+add wave             /tb_RV32I/CORE/smclk_w
 add wave -divider {CPU}
 add wave -radix hex  /tb_RV32I/pc_o
 add wave -radix hex  /tb_RV32I/instruction_o
