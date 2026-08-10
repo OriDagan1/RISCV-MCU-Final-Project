@@ -164,12 +164,42 @@ so you should never hit this — but that is why the check is there.
 it holds add/mul/xor results from an older version of that program. The `.h`
 dump is correct. Generally: `.h` is the simulation format, `.hex` is Quartus.
 
-**There is no PLL.** The supplied `PLL.vhd` wrapped an ALTPLL, a Cyclone II
-megafunction that the Cyclone V on the DE10-Standard does not support. It has
-been deleted. `MCU.vhd` derives MCLK from `clk_i` with a toggle flip-flop:
-`divclk = clk_i` (50 MHz), `mclk = clk_i/2` (25 MHz), the same ratio the PLL was
-set to. When we get to Quartus this needs a `create_generated_clock` in the
-`.sdc`.
+**There are three PLLs, and simulation bypasses them.** Per the professor's
+forum post, each clock gets its own PLL, all from the 50 MHz board oscillator:
+
+| Clock | Frequency | Drives |
+|---|---|---|
+| MCLK | 25 MHz | the CPU |
+| DIVCLK | 200 MHz | the division accelerator |
+| SMCLK | 25 MHz | the Basic Timer |
+
+These are `altera_pll` (PLL Intel FPGA IP), *not* the ALTPLL that came with the
+project — ALTPLL is a Cyclone II megafunction the Cyclone V does not support.
+
+`MCU.vhd` picks between two clock sources with the `MODELSIM` generic, which
+the professor left declared and unused for exactly this:
+
+- `MODELSIM = 0` — instantiate the three PLL IP cores. This is the FPGA build.
+- `MODELSIM = 1` — generate the clocks behaviourally. No Intel libraries, no
+  PLL lock delay. `run_benchmark.do` passes this.
+
+**Both branches run at the same frequencies by construction**, because both
+read `clk_config_package.vhd`, which is *generated* by `QUARTUS/gen_plls.tcl`
+from the same numbers it builds the IP with. Verified: the benchmark gives 276
+cycles and 1024/1024 either way.
+
+**To retune a clock**, edit the `CLOCKS` list in `QUARTUS/gen_plls.tcl` and run
+`QUARTUS\gen_plls.bat`. That regenerates the IP *and* rewrites the VHDL
+constants, so the two can never drift apart. Then `do compile.do`.
+
+There is a ceiling on DIVCLK: `DIVBUSY` is high for 32 DIVCLK cycles, and the
+MCLK-side synchronizer in `DIV_ACCEL` needs it high for at least 2 MCLK cycles,
+so the DIVCLK:MCLK ratio must stay at or below 16. `tb_div_accel` asserts this
+and fails with an explanatory message if you exceed it — it is not a silent
+failure, but it is worth knowing before you try 800 MHz.
+
+For Quartus the `.sdc` needs a `create_clock` on `clk_i` plus
+`derive_pll_clocks`, which picks up all three PLL outputs.
 
 **Design hierarchy**, for the wave window:
 
@@ -189,17 +219,22 @@ tb_RV32I
 ```
 DUT/RV32IMscMCU/    design sources
   MCU.vhd             top level: clocks, DTCM, address decode  <- GPIO goes here
+  clk_config_package.vhd   GENERATED clock frequencies - do not edit
   RV32I_CORE.vhd      the CPU, a bus master
   DIV_ACCEL.vhd       division accelerator (CDC + handshake)
   DIV.vhd             restoring divider
   CDC_SYNC.vhd        clock domain crossing synchronizer
   SUBTRACTOR.vhd
   IFETCH / IDECODE / CONTROL / EXECUTE / DMEMORY / MULT
+  BASIC_TIMER.vhd     Basic Timer top (Fig.7) - built, not yet memory-mapped
+  BTCNT / BT_CLKDIV / BT_OUTPUT_UNIT / BT_CAPTURE
   aux_package.vhd     component declarations - update when you change a port list
   const_package.vhd   instruction encodings, ALU opcodes
   cond_compilation_package.vhd   TCM size and widths
 TB/RV32IMscMCU/     testbenches
-SIM/RV32IMscMCU/    compile.do, run_benchmark.do
+SIM/RV32IMscMCU/    compile.do, run_benchmark.do, run_timer.do
+QUARTUS/            gen_plls.tcl + .bat, the three PLL .qsys files
+  PLL_MCLK/ PLL_DIVCLK/ PLL_SMCLK/   generated IP: synthesis/ and simulation/
 ```
 
 If you change any entity's ports, update its component declaration in

@@ -15,10 +15,13 @@
 --   3. back-to-back divisions with div_op_i never going low, which is what
 --      two consecutive div instructions actually look like to this block
 --   4. the stall lasts a sane, repeatable number of MCLK cycles
+--   5. the DIVCLK:MCLK ratio is still one the handshake can survive - see
+--      the assertion below, which is the guard rail on retuning the PLLs
 --============================================================================
 LIBRARY IEEE;
 USE IEEE.STD_LOGIC_1164.ALL;
 USE IEEE.NUMERIC_STD.ALL;
+USE work.clk_config_package.all;
 
 
 ENTITY tb_div_accel IS
@@ -26,9 +29,25 @@ END tb_div_accel;
 
 
 ARCHITECTURE sim OF tb_div_accel IS
-	CONSTANT MCLK_PERIOD	: TIME		:= 40 ns;	-- 25 MHz
-	CONSTANT DCLK_PERIOD	: TIME		:= 20 ns;	-- 50 MHz
+	-- Taken from the generated clock configuration rather than hard-coded, so
+	-- retuning a PLL in QUARTUS/gen_plls.tcl re-tests the accelerator at the
+	-- ratio it will actually run at.
+	CONSTANT MCLK_PERIOD	: TIME		:= (1000.0 / G_MCLK_MHZ)   * 1 ns;
+	CONSTANT DCLK_PERIOD	: TIME		:= (1000.0 / G_DIVCLK_MHZ) * 1 ns;
 	CONSTANT N				: POSITIVE	:= 32;
+
+	-- HOW FAST DIVCLK IS ALLOWED TO GO.
+	--
+	-- DIVBUSY is high for exactly N DIVCLK cycles, which in MCLK terms is
+	-- N * f_mclk / f_divclk cycles. The MCLK-side two-flop synchronizer has to
+	-- sample that pulse, so it needs it to stay high for at least two MCLK
+	-- edges. Push DIVCLK too far above MCLK and the busy pulse becomes
+	-- narrower than the synchronizer can see: WAIT_BUSY then never observes
+	-- the divider start and the core stalls forever.
+	--
+	-- At the current 200/25 = 8 this evaluates to 4.0, so there is a factor of
+	-- two in hand. The limit is a ratio of 16.
+	CONSTANT BUSY_MCLK_CYCLES : REAL := real(N) * G_MCLK_MHZ / G_DIVCLK_MHZ;
 
 	SIGNAL mclk			: STD_LOGIC := '0';
 	SIGNAL divclk		: STD_LOGIC := '0';
@@ -43,6 +62,13 @@ ARCHITECTURE sim OF tb_div_accel IS
 	SIGNAL div_busy		: STD_LOGIC;
 
 BEGIN
+	ASSERT BUSY_MCLK_CYCLES >= 2.0
+		REPORT "DIVCLK:MCLK ratio is too high. DIVBUSY would be high for only "
+		     & REAL'image(BUSY_MCLK_CYCLES) & " MCLK cycles, which the two-flop "
+		     & "synchronizer in DIV_ACCEL cannot reliably capture - the core "
+		     & "would stall forever. Lower G_DIVCLK_MHZ in QUARTUS/gen_plls.tcl."
+		SEVERITY failure;
+
 	mclk	<= NOT mclk   AFTER MCLK_PERIOD/2 WHEN NOT sim_done ELSE '0';
 	divclk	<= NOT divclk AFTER DCLK_PERIOD/2 WHEN NOT sim_done ELSE '0';
 
