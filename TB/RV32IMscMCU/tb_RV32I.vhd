@@ -54,8 +54,10 @@ ARCHITECTURE struct OF tb_RV32I IS
 	SIGNAL dtcm_data_wr_o			: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
 	SIGNAL dtcm_data_rd_o			: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
 	
+	SIGNAL smclk_o						: STD_LOGIC;
+
 	SIGNAL mclk_cnt_o					:	STD_LOGIC_VECTOR(CLK_CNT_WIDTH-1 DOWNTO 0);
-   
+
 BEGIN
 	-- The DUT is the whole MCU. Since Sprint 0 the core is a bus master with
 	-- no data memory of its own, so it cannot run a program on its own.
@@ -97,23 +99,33 @@ BEGIN
 		dtcm_addr_o				=> dtcm_addr_o,				-- DMEMORY input
 		dtcm_data_wr_o		=> dtcm_data_wr_o,		-- DMEMORY input
 		dtcm_data_rd_o		=> dtcm_data_rd_o,		-- DMEMORY output
-		
+
+		smclk_o						=> smclk_o,						-- Basic Timer clock
+
 		mclk_cnt_o				=> mclk_cnt_o					-- TOP output
-	);	
---------------------------------------------------------------------	
-	gen_clk : -- MCLK cycle = 100nsec = 0.1usec
+	);
+--------------------------------------------------------------------
+	-- 50 MHz, the DE10-Standard board oscillator. This is the PLL reference
+	-- clock, so it has to be the real frequency: the three PLLs are generated
+	-- for a 50 MHz refclk and would produce the wrong outputs from anything
+	-- else. (It used to be 100 ns / 10 MHz, which was harmless only because
+	-- the clocks were derived by a toggle flip-flop rather than by a PLL.)
+	gen_clk :
 	process
   begin
 		clk_i <= '1';
-		wait for 50 ns;
+		wait for 10 ns;
 		clk_i <= not clk_i;
-		wait for 50 ns;
+		wait for 10 ns;
   end process;
-	
-	gen_rst : 
+
+	-- Long enough for a real PLL to lock when MODELSIM = 0. The cycle counter
+	-- is reset-cleared and only starts on release, so a longer reset costs
+	-- simulation time but does not affect the reported cycle count.
+	gen_rst :
 	process
   begin
-		rst_i <='1','0' after 80 ns;
+		rst_i <='1','0' after 2 us;
 		wait;
   end process;
 --------------------------------------------------------------------		

@@ -48,7 +48,14 @@ quietly set DTCM "/tb_RV32I/CORE/MEM/data_memory/MEMORY/m_mem_data_a"
 # generic on the testbench, so it needs an elaborated design to read; load
 # once plainly, check, then reload with the right images.
 #-----------------------------------------------------------------------------
-vsim -quiet -t 1ps work.tb_RV32I
+# MODELSIM=1 picks the behavioural clock generators in MCU.vhd over the three
+# PLL IP cores. Identical frequencies either way - both branches read
+# clk_config_package.vhd, which QUARTUS/gen_plls.tcl writes alongside the IP -
+# but the behavioural path needs no PLL lock time. To simulate the real IP
+# instead, set this to 0; compile.do reports whether the models are loaded.
+quietly set SIMGEN "-GMODELSIM=1"
+
+vsim -quiet -t 1ps $SIMGEN work.tb_RV32I
 # Everything is 'U' until reset propagates and std_logic_arith warns on every
 # operation it sees one in - hundreds of harmless messages. Silenced over the
 # reset window only, so a genuine U/X during the program is still reported.
@@ -85,7 +92,7 @@ if {$IMAGE eq "M9K"} {
 	# Intel HEX goes in through the init_file generic; altsyncram applies it
 	# at time 0, so it has to be set before elaboration.
 	quit -sim
-	vsim -quiet -t 1ps "-GITCM_INIT_FILE=\"$IMG/ITCM.hex\"" "-GDTCM_INIT_FILE=\"$IMG/DTCM.hex\"" work.tb_RV32I
+	vsim -quiet -t 1ps $SIMGEN "-GITCM_INIT_FILE=\"$IMG/ITCM.hex\"" "-GDTCM_INIT_FILE=\"$IMG/DTCM.hex\"" work.tb_RV32I
 	# quit -sim cleared these, so re-arm them for the new simulation
 	quietly set StdArithNoWarnings 1
 	quietly set NumericStdNoWarnings 1
@@ -102,6 +109,13 @@ if {$IMAGE eq "M9K"} {
 echo "TCM = [expr {$WORDS*4/1024}] KiB, image set = $IMAGE"
 echo "loaded $IMG"
 
+# The three PLL clocks. Zoom right in to see the 8:1 ratio: DIVCLK ticks
+# eight times per MCLK, which is what cut the division stall to 9 cycles.
+add wave -divider {Clocks}
+add wave             /tb_RV32I/clk_i
+add wave             /tb_RV32I/CORE/mclk_w
+add wave             /tb_RV32I/CORE/divclk_w
+add wave             /tb_RV32I/CORE/smclk_w
 add wave -divider {CPU}
 add wave -radix hex  /tb_RV32I/pc_o
 add wave -radix hex  /tb_RV32I/instruction_o

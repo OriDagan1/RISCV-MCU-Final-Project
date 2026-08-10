@@ -6,3 +6,15 @@ SIM/**/vsim.wlf
 SIM/**/wlft*
 SIM/**/*.mem
 SIM/**/modelsim.ini
+
+# Quartus IP generation. The .qsys sources, the synthesis output and the
+# ModelSim simulation models ARE committed - the design needs them. Ignored
+# here: setup scripts for simulators we do not use, and generation reports.
+QUARTUS/*/simulation/aldec/
+QUARTUS/*/simulation/cadence/
+QUARTUS/*/simulation/synopsys/
+QUARTUS/*/*_generation*.rpt
+QUARTUS/*/*.html
+QUARTUS/*/*.csv
+QUARTUS/*/synthesis/*.debuginfo
+QUARTUS/.qsys_edit/
