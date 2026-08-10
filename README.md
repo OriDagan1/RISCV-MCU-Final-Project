@@ -237,6 +237,10 @@ QUARTUS/            gen_plls.tcl + .bat, the three PLL .qsys files
   PLL_MCLK/ PLL_DIVCLK/ PLL_SMCLK/   generated IP: synthesis/ and simulation/
 ```
 
+The Basic Timer of Figure 7 is on this branch only — built and tested, but not
+yet memory-mapped, so it waits for the GPIO work to land before it gets a bus
+interface. It is deliberately not on `main` for that reason.
+
 If you change any entity's ports, update its component declaration in
 `aux_package.vhd` too, or you get a confusing elaboration error rather than a
 compile error.
