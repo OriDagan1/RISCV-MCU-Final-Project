@@ -18,3 +18,10 @@ QUARTUS/*/*.html
 QUARTUS/*/*.csv
 QUARTUS/*/synthesis/*.debuginfo
 QUARTUS/.qsys_edit/
+
+# Office scratch files. Word leaves these next to an open document: "~$name"
+# is the lock file that records who has it open, and ~WRLnnnn.tmp is crash
+# recovery scratch. The documents themselves under DOC/ are committed.
+~$*
+*.tmp
+~WRL*.tmp

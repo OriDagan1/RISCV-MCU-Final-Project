@@ -42,7 +42,7 @@ the data memory.
  TCM = 8 KiB, image set = M9K
  PC               = 0068
  instruction      = 00000063
- cycles to finish = 484
+ cycles to finish = 276
  compared 1024 words, 0 mismatches
  *** DTCM MATCHES THE GOLDEN MODEL ***
 
@@ -71,22 +71,26 @@ Then `do run_benchmark.do` again. No need to recompile.
 ### Unit testbenches
 
 ```tcl
-vsim work.tb_divider   ; run -all      # the divider, 4618 divisions
-vsim work.tb_cdc_sync  ; run -all      # the clock domain crossing
-vsim work.tb_div_accel ; run -all      # the accelerator handshake
+vsim work.tb_divider                ; run -all   # the divider, 4618 divisions
+vsim work.tb_cdc_sync               ; run -all   # the clock domain crossing
+vsim work.tb_div_accel              ; run -all   # the accelerator handshake
+vsim work.tb_SevenSegmentEncoder    ; run -all   # the hex to segment table
+vsim work.tb_GPIO_AddressDecoder    ; run -all   # all 32768 input combinations
+vsim work.tb_GPIO_LEDR_Interface    ; run -all   # PORT_LEDR
+vsim work.tb_GPIO_SW_Interface      ; run -all   # PORT_SW
+vsim work.tb_GPIO_HEX_Pair_Interface; run -all   # one pair of displays
 ```
 
-Each ends with `ALL TESTS PASSED`.
+Each ends with `ALL TESTS PASSED` or an equivalent `PASSED` line.
 
 ---
 
-## Where the GPIO goes
+## Memory-mapped I/O
 
 `MCU.vhd` is the top level and owns everything outside the CPU: clocks, the
-DTCM, and the address decode. The CPU is a bus master — it drives a byte
-address and takes read data back, and has no idea which device answers. So
-**all of the GPIO work is in `MCU.vhd` plus whatever new files you add**; you
-should not need to touch the core.
+DTCM, the address decode and the GPIO. The CPU is a bus master — it drives a
+byte address and takes read data back, and has no idea which device answers.
+Nothing in the core knows that the GPIO exists.
 
 ### Address map (Figure 2)
 
@@ -103,45 +107,50 @@ HEX0 0x2004   HEX1 0x2005   HEX2 0x2008
 HEX3 0x2009   HEX4 0x200C   HEX5 0x200D
 ```
 
-### The three hook points
+Clause 5 maps `LEDR7..LEDR0` and `SW7..SW0` only — eight bits each, although
+the board carries ten of each. `LEDR9`, `LEDR8`, `SW9` and `SW8` are unused.
 
-They are already marked `TODO(feature/gpio)` in `MCU.vhd`:
+### How it is wired
 
-**1. Port list** — add the board pins:
-
-```vhdl
-LEDR_o : OUT STD_LOGIC_VECTOR(9 DOWNTO 0);
-SW_i   : IN  STD_LOGIC_VECTOR(9 DOWNTO 0);
-HEX0_o : OUT STD_LOGIC_VECTOR(6 DOWNTO 0);
-...
+```
+bus_addr_w ──> GPIO_AddressDecoder ──> five one-hot chip selects
+                                        │
+   IOLEDR   GPIO_LEDR_Interface  ───────┤   LEDR_o
+   IOSW     GPIO_SW_Interface    ───────┤   SW_i
+   IOHEX01  GPIO_HEX_Pair_Interface ────┤   HEX0_o HEX1_o
+   IOHEX23  GPIO_HEX_Pair_Interface ────┤   HEX2_o HEX3_o
+   IOHEX45  GPIO_HEX_Pair_Interface ────┘   HEX4_o HEX5_o
+                                        │
+                    io_rdata_w  <── OR of the five read paths
+                    bus_rdata_w <── io_rdata_w when io_sel_w else dtcm_q_w
 ```
 
-**2. Write path** — `io_sel_w` already exists and the DTCM write enable is
-already qualified with it, so a write to `0x2000+` cannot reach the DTCM:
+Three things worth knowing:
 
-```vhdl
-io_sel_w  <= bus_addr_w(DA_WIDTH-1);
-dtcm_we_w <= bus_write_w AND NOT io_sel_w;    -- already there
-io_we_w   <= bus_write_w AND     io_sel_w;    -- yours
-```
+- **One instance serves two displays.** Inside a pair the two addresses differ
+  in bit 0 only, so the decoder gives the pair one chip select and
+  `bus_addr_w(0)` picks the digit.
+- **The read paths are OR-ed, not multiplexed.** Every port drives all zeros
+  unless it is both selected and being read, and the chip selects are one-hot
+  by construction. That is the wired-OR Figure 5 draws as tri-state buffers;
+  Cyclone has no internal tri-state, and Quartus turns every internal `'Z'`
+  into exactly this gate. An unmapped I/O address asserts no chip select and
+  therefore reads as zero.
+- **GPIO registers capture on the FALLING edge of MCLK**, as does the DTCM
+  (`dmemory` inverts the clock into `altsyncram`), so every target on the data
+  bus latches write data at the same instant of the CPU cycle.
 
-**3. Read path** — currently a one-line stub. Replace it with the mux:
-
-```vhdl
--- now:
-bus_rdata_w <= dtcm_q_w;
--- becomes:
-bus_rdata_w <= io_rdata_w WHEN io_sel_w = '1' ELSE dtcm_q_w;
-```
-
-Useful signals already in scope: `bus_addr_w`, `bus_wdata_w`, `bus_rdata_w`,
-`bus_read_w`, `bus_write_w`, `io_sel_w`, `mclk_w`.
+The decoder also decodes address bits [12:5], which Figure 5 omits, so the
+block occupies exactly `0x2000-0x201F`. Without them the decode would alias,
+and the aliases are not harmless: `BTCMPR0` at `0x2020` has the same [4:2]
+pattern as `PORT_LEDR`, and `IE` at `0x202C` the same as the HEX4/HEX5 pair.
 
 ### Checking you didn't break anything
 
 Run `do run_benchmark.do` on any benchmark. It must still say
-`*** DTCM MATCHES THE GOLDEN MODEL ***`. None of the supplied benchmarks touch
-I/O, so adding the GPIO must leave every one of them unchanged.
+`*** DTCM MATCHES THE GOLDEN MODEL ***` at 276 cycles. None of the supplied
+benchmarks touch I/O, so the GPIO must leave every one of them unchanged — if
+a cycle count moves, that is a bug and not an improvement.
 
 ---
 
@@ -205,8 +214,12 @@ For Quartus the `.sdc` needs a `create_clock` on `clk_i` plus
 
 ```
 tb_RV32I
-└── CORE : MCU                 <- top level, clocks + DTCM + decode
+└── CORE : MCU                 <- top level, clocks + DTCM + decode + GPIO
     ├── MEM : dmemory          /tb_RV32I/CORE/MEM/data_memory/MEMORY/m_mem_data_a
+    ├── IODEC   : GPIO_AddressDecoder
+    ├── IOLEDR  : GPIO_LEDR_Interface
+    ├── IOSW    : GPIO_SW_Interface
+    ├── IOHEX01 / IOHEX23 / IOHEX45 : GPIO_HEX_Pair_Interface
     └── CPU : RV32I_CORE       /tb_RV32I/CORE/CPU/...
         ├── IFE  (ITCM)
         └── DIVA (divider accelerator)
@@ -218,7 +231,7 @@ tb_RV32I
 
 ```
 DUT/RV32IMscMCU/    design sources
-  MCU.vhd             top level: clocks, DTCM, address decode  <- GPIO goes here
+  MCU.vhd             top level: clocks, DTCM, address decode, GPIO
   clk_config_package.vhd   GENERATED clock frequencies - do not edit
   RV32I_CORE.vhd      the CPU, a bus master
   DIV_ACCEL.vhd       division accelerator (CDC + handshake)
@@ -226,6 +239,11 @@ DUT/RV32IMscMCU/    design sources
   CDC_SYNC.vhd        clock domain crossing synchronizer
   SUBTRACTOR.vhd
   IFETCH / IDECODE / CONTROL / EXECUTE / DMEMORY / MULT
+  GPIO_AddressDecoder.vhd      one chip select per device (Fig.5)
+  GPIO_LEDR_Interface.vhd      PORT_LEDR, GPO
+  GPIO_SW_Interface.vhd        PORT_SW, GPI, combinational
+  GPIO_HEX_Pair_Interface.vhd  two displays per instance
+  SevenSegmentEncoder.vhd      hex nibble to g f e d c b a, active low
   aux_package.vhd     component declarations - update when you change a port list
   const_package.vhd   instruction encodings, ALU opcodes
   cond_compilation_package.vhd   TCM size and widths

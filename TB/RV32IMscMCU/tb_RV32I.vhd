@@ -58,6 +58,19 @@ ARCHITECTURE struct OF tb_RV32I IS
 
 	SIGNAL mclk_cnt_o					:	STD_LOGIC_VECTOR(CLK_CNT_WIDTH-1 DOWNTO 0);
 
+	-- Memory-mapped I/O pins. None of the supplied benchmarks touches I/O, so
+	-- the switches are held at a fixed pattern and the outputs are only
+	-- observed: this testbench exists to prove the GPIO changed nothing. The
+	-- ports themselves are verified by the five tb_GPIO_* unit testbenches.
+	SIGNAL SW_i								: STD_LOGIC_VECTOR(7 DOWNTO 0) := x"A5";
+	SIGNAL LEDR_o							: STD_LOGIC_VECTOR(7 DOWNTO 0);
+	SIGNAL HEX0_o							: STD_LOGIC_VECTOR(6 DOWNTO 0);
+	SIGNAL HEX1_o							: STD_LOGIC_VECTOR(6 DOWNTO 0);
+	SIGNAL HEX2_o							: STD_LOGIC_VECTOR(6 DOWNTO 0);
+	SIGNAL HEX3_o							: STD_LOGIC_VECTOR(6 DOWNTO 0);
+	SIGNAL HEX4_o							: STD_LOGIC_VECTOR(6 DOWNTO 0);
+	SIGNAL HEX5_o							: STD_LOGIC_VECTOR(6 DOWNTO 0);
+
 BEGIN
 	-- The DUT is the whole MCU. Since Sprint 0 the core is a bus master with
 	-- no data memory of its own, so it cannot run a program on its own.
@@ -80,7 +93,17 @@ BEGIN
 		--Inputs
 		rst_i           	=> rst_i,
 		clk_i           	=> clk_i,
-		
+		SW_i							=> SW_i,							-- PORT_SW  0x2010
+
+		--Memory-mapped I/O pins
+		LEDR_o						=> LEDR_o,						-- PORT_LEDR 0x2000
+		HEX0_o						=> HEX0_o,						-- 0x2004
+		HEX1_o						=> HEX1_o,						-- 0x2005
+		HEX2_o						=> HEX2_o,						-- 0x2008
+		HEX3_o						=> HEX3_o,						-- 0x2009
+		HEX4_o						=> HEX4_o,						-- 0x200C
+		HEX5_o						=> HEX5_o,						-- 0x200D
+
 		--Outputs
 		pc_o							=> pc_o,							-- IFETCH output
 		instruction_o			=> instruction_o,			-- IFETCH output

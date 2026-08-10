@@ -30,18 +30,18 @@
 -- DTCM.h golden model. It exists so that a failure there can be blamed on the
 -- system and not on this device.
 --
--- Run:  vcom SevenSegmentEncoder.vhd GPIO_HEX_Pair_Interface.vhd GPIO_HEX_Pair_Interface_tb.vhd
---       vsim -voptargs=+acc work.GPIO_HEX_Pair_Interface_tb
+-- Run:  vcom SevenSegmentEncoder.vhd GPIO_HEX_Pair_Interface.vhd tb_GPIO_HEX_Pair_Interface.vhd
+--       vsim -voptargs=+acc work.tb_GPIO_HEX_Pair_Interface
 --       run -all
 ---------------------------------------------------------------------------------------------
 LIBRARY IEEE;
 USE IEEE.STD_LOGIC_1164.ALL;
 USE IEEE.NUMERIC_STD.ALL;
 
-ENTITY GPIO_HEX_Pair_Interface_tb IS
-END GPIO_HEX_Pair_Interface_tb;
+ENTITY tb_GPIO_HEX_Pair_Interface IS
+END tb_GPIO_HEX_Pair_Interface;
 ---------------------------------------------------------------------------------------------
-ARCHITECTURE sim OF GPIO_HEX_Pair_Interface_tb IS
+ARCHITECTURE sim OF tb_GPIO_HEX_Pair_Interface IS
 
 	CONSTANT DATA_BUS_WIDTH	: integer := 32;
 	CONSTANT PORT_WIDTH		: integer := 8;		-- the D-latch of Figure 5

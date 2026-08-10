@@ -35,6 +35,11 @@ foreach f [list \
 	$DUT/DIV.vhd                      \
 	$DUT/CDC_SYNC.vhd                 \
 	$DUT/DIV_ACCEL.vhd                \
+	$DUT/SevenSegmentEncoder.vhd      \
+	$DUT/GPIO_AddressDecoder.vhd      \
+	$DUT/GPIO_LEDR_Interface.vhd      \
+	$DUT/GPIO_SW_Interface.vhd        \
+	$DUT/GPIO_HEX_Pair_Interface.vhd  \
 	$DUT/CONTROL.VHD                  \
 	$DUT/IDECODE.VHD                  \
 	$DUT/IFETCH.VHD                   \
@@ -45,7 +50,12 @@ foreach f [list \
 	$TB/tb_RV32I.vhd                  \
 	$TB/tb_divider.vhd                \
 	$TB/tb_cdc_sync.vhd               \
-	$TB/tb_div_accel.vhd              ] {
+	$TB/tb_div_accel.vhd              \
+	$TB/tb_SevenSegmentEncoder.vhd    \
+	$TB/tb_GPIO_AddressDecoder.vhd    \
+	$TB/tb_GPIO_LEDR_Interface.vhd    \
+	$TB/tb_GPIO_SW_Interface.vhd      \
+	$TB/tb_GPIO_HEX_Pair_Interface.vhd ] {
 	echo "vcom $f"
 	if {[catch {vcom -2008 -quiet $f} msg]} {
 		echo "COMPILE FAILED: $f"

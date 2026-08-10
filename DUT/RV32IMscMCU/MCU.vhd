@@ -34,6 +34,10 @@ ENTITY MCU IS
 		DATA_WORDS_NUM 		: integer 	:= G_DATA_WORDSNUM;
 		DA_WIDTH			: integer 	:= G_DA_WIDTH;
 		CLK_CNT_WIDTH 		: integer 	:= 16;
+		-- Clause 5 maps only LEDR7..LEDR0 and SW7..SW0, although the board
+		-- carries ten of each. LEDR9, LEDR8, SW9 and SW8 stay unconnected.
+		LEDR_WIDTH			: integer	:= 8;
+		SW_WIDTH			: integer	:= 8;
 		ITCM_INIT_FILE		: string	:= "C:\Users\oripa\Documents\Benchmark_Apps\test3\RV32IM\bin\M9K-intel\ITCM.hex";
 		DTCM_INIT_FILE		: string	:= "C:\Users\oripa\Documents\Benchmark_Apps\test3\RV32IM\bin\M9K-intel\DTCM.hex"
 	);
@@ -42,12 +46,22 @@ ENTITY MCU IS
 		rst_i		 		:IN	STD_LOGIC;
 		clk_i				:IN	STD_LOGIC;	-- 50 MHz board clock
 
+		SW_i				:IN	STD_LOGIC_VECTOR(SW_WIDTH-1 DOWNTO 0);	-- PORT_SW   0x2010
+
 		--=====================================================================
-		-- TODO(feature/gpio): the I/O pins land here.
+		-- Memory-mapped I/O pins (Figure 5, clause 5)
 		--   PORT_LEDR  0x2000    PORT_SW  0x2010
 		--   HEX0 0x2004  HEX1 0x2005  HEX2 0x2008
 		--   HEX3 0x2009  HEX4 0x200C  HEX5 0x200D
+		-- Segment vectors are g f e d c b a, active low.
 		--=====================================================================
+		LEDR_o				:OUT	STD_LOGIC_VECTOR(LEDR_WIDTH-1 DOWNTO 0);
+		HEX0_o				:OUT	STD_LOGIC_VECTOR(6 DOWNTO 0);
+		HEX1_o				:OUT	STD_LOGIC_VECTOR(6 DOWNTO 0);
+		HEX2_o				:OUT	STD_LOGIC_VECTOR(6 DOWNTO 0);
+		HEX3_o				:OUT	STD_LOGIC_VECTOR(6 DOWNTO 0);
+		HEX4_o				:OUT	STD_LOGIC_VECTOR(6 DOWNTO 0);
+		HEX5_o				:OUT	STD_LOGIC_VECTOR(6 DOWNTO 0);
 
 		--Outputs (used also for Signal-Tap auxiliary pins)
 		pc_o				:OUT	STD_LOGIC_VECTOR(PC_WIDTH-1 DOWNTO 0);
@@ -127,6 +141,22 @@ ARCHITECTURE structure OF MCU IS
 	SIGNAL dtcm_we_w		: STD_LOGIC;
 	SIGNAL dtcm_rd_w		: STD_LOGIC;
 	SIGNAL dtcm_q_w			: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+
+	-- Memory-mapped I/O. One chip select per device out of the GPIO decoder,
+	-- one read path back from each; exactly one cs is ever asserted, so the
+	-- read paths are OR-ed rather than multiplexed (see the read mux below).
+	SIGNAL cs_ledr_w		: STD_LOGIC;
+	SIGNAL cs_hex0_1_w		: STD_LOGIC;
+	SIGNAL cs_hex2_3_w		: STD_LOGIC;
+	SIGNAL cs_hex4_5_w		: STD_LOGIC;
+	SIGNAL cs_sw_w			: STD_LOGIC;
+
+	SIGNAL rd_ledr_w		: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+	SIGNAL rd_hex0_1_w		: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+	SIGNAL rd_hex2_3_w		: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+	SIGNAL rd_hex4_5_w		: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+	SIGNAL rd_sw_w			: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+	SIGNAL io_rdata_w		: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
 
 BEGIN
 
@@ -280,13 +310,145 @@ BEGIN
 	);
 
 	--=======================================
+	-- Memory-mapped I/O (Figure 5)
+	--=======================================
+	-- The GPIO decoder turns the byte address into one chip select per device;
+	-- no port module inspects the address bus itself. MemRead / MemWrite are
+	-- passed through unqualified because every port already gates them with
+	-- its own cs_i, and cs_i is only asserted inside the I/O region.
+	--
+	-- All GPIO registers are clocked by MCLK. They capture on its FALLING
+	-- edge, as does the DTCM (dmemory inverts the clock into altsyncram), so
+	-- every target on the data bus latches write data at the same instant.
+	IODEC: GPIO_AddressDecoder
+	generic map(
+		DA_WIDTH			=> DA_WIDTH
+	)
+	PORT MAP (
+		--Inputs
+		en_i				=> io_sel_w,
+		addr_i				=> bus_addr_w,
+
+		--Outputs
+		cs_ledr_o			=> cs_ledr_w,
+		cs_hex0_1_o			=> cs_hex0_1_w,
+		cs_hex2_3_o			=> cs_hex2_3_w,
+		cs_hex4_5_o			=> cs_hex4_5_w,
+		cs_sw_o				=> cs_sw_w
+	);
+
+	IOLEDR: GPIO_LEDR_Interface
+	generic map(
+		DATA_BUS_WIDTH		=> DATA_BUS_WIDTH,
+		LEDR_WIDTH			=> LEDR_WIDTH
+	)
+	PORT MAP (
+		--Inputs
+		clk_i				=> mclk_w,
+		rst_i				=> rst_i,
+		cs_i				=> cs_ledr_w,
+		MemRead_ctrl_i		=> bus_read_w,
+		MemWrite_ctrl_i		=> bus_write_w,
+		data_wr_i			=> bus_wdata_w,
+
+		--Outputs
+		data_rd_o			=> rd_ledr_w,
+		LEDR_o				=> LEDR_o
+	);
+
+	IOSW: GPIO_SW_Interface
+	generic map(
+		DATA_BUS_WIDTH		=> DATA_BUS_WIDTH,
+		SW_WIDTH			=> SW_WIDTH
+	)
+	PORT MAP (
+		--Inputs
+		cs_i				=> cs_sw_w,
+		MemRead_ctrl_i		=> bus_read_w,
+		SW_i				=> SW_i,
+
+		--Outputs
+		data_rd_o			=> rd_sw_w
+	);
+
+	-- One instance per pair of displays. Inside a pair the two addresses
+	-- differ in bit 0 only, so the decoder selects the pair and bit 0 of the
+	-- byte address picks the digit: even address -> lo, odd address -> hi.
+	IOHEX01: GPIO_HEX_Pair_Interface
+	generic map(
+		DATA_BUS_WIDTH		=> DATA_BUS_WIDTH
+	)
+	PORT MAP (
+		--Inputs
+		clk_i				=> mclk_w,
+		rst_i				=> rst_i,
+		cs_i				=> cs_hex0_1_w,
+		sel_i				=> bus_addr_w(0),
+		MemRead_ctrl_i		=> bus_read_w,
+		MemWrite_ctrl_i		=> bus_write_w,
+		data_wr_i			=> bus_wdata_w,
+
+		--Outputs
+		data_rd_o			=> rd_hex0_1_w,
+		HEX_lo_o			=> HEX0_o,			-- 0x2004
+		HEX_hi_o			=> HEX1_o			-- 0x2005
+	);
+
+	IOHEX23: GPIO_HEX_Pair_Interface
+	generic map(
+		DATA_BUS_WIDTH		=> DATA_BUS_WIDTH
+	)
+	PORT MAP (
+		--Inputs
+		clk_i				=> mclk_w,
+		rst_i				=> rst_i,
+		cs_i				=> cs_hex2_3_w,
+		sel_i				=> bus_addr_w(0),
+		MemRead_ctrl_i		=> bus_read_w,
+		MemWrite_ctrl_i		=> bus_write_w,
+		data_wr_i			=> bus_wdata_w,
+
+		--Outputs
+		data_rd_o			=> rd_hex2_3_w,
+		HEX_lo_o			=> HEX2_o,			-- 0x2008
+		HEX_hi_o			=> HEX3_o			-- 0x2009
+	);
+
+	IOHEX45: GPIO_HEX_Pair_Interface
+	generic map(
+		DATA_BUS_WIDTH		=> DATA_BUS_WIDTH
+	)
+	PORT MAP (
+		--Inputs
+		clk_i				=> mclk_w,
+		rst_i				=> rst_i,
+		cs_i				=> cs_hex4_5_w,
+		sel_i				=> bus_addr_w(0),
+		MemRead_ctrl_i		=> bus_read_w,
+		MemWrite_ctrl_i		=> bus_write_w,
+		data_wr_i			=> bus_wdata_w,
+
+		--Outputs
+		data_rd_o			=> rd_hex4_5_w,
+		HEX_lo_o			=> HEX4_o,			-- 0x200C
+		HEX_hi_o			=> HEX5_o			-- 0x200D
+	);
+
+	--=======================================
 	-- Read data multiplexer
 	--=======================================
-	-- TODO(feature/gpio): becomes
-	--     bus_rdata_w <= io_rdata_w WHEN io_sel_w = '1' ELSE dtcm_q_w;
-	-- once the I/O block exists. Until then every read is answered by the
-	-- DTCM, which is exactly the behaviour before this file was split out.
-	bus_rdata_w	<= dtcm_q_w;
+	-- Each port drives all zeros unless it is both selected and being read,
+	-- and the chip selects are one-hot by construction, so OR-ing the five
+	-- read paths is the wired-OR that Figure 5 draws as tri-state buffers on
+	-- a shared bus. Cyclone has no internal tri-state anyway; Quartus turns
+	-- every internal 'Z' into exactly this gate.
+	--
+	-- An unmapped I/O address (0x2014, 0x2018, 0x201C and everything from
+	-- 0x2020 up, reserved for the peripherals of clause 6) asserts no chip
+	-- select at all and therefore reads as zero.
+	io_rdata_w	<= rd_ledr_w OR rd_hex0_1_w OR rd_hex2_3_w OR rd_hex4_5_w OR rd_sw_w;
+
+	bus_rdata_w	<= io_rdata_w WHEN io_sel_w = '1' ELSE dtcm_q_w;
 
 ---------------------------------------------------------------------------------------
 -- Copying out important signals only for Verification and FPGA Velidation(Signal-TAP)
