@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<simPackage>
+ <file
+   path="simulation/submodules/PLL_MCLK_pll_0.vho"
+   type="VHDL"
+   library="pll_0" />
+ <file path="simulation/PLL_MCLK.vhd" type="VHDL" />
+ <topLevel name="PLL_MCLK" />
+ <deviceFamily name="cyclonev" />
+</simPackage>
