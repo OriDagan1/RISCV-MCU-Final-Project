@@ -26,6 +26,10 @@ ENTITY MCU IS
 	generic(
 		WORD_GRANULARITY 	: boolean 	:= G_WORD_GRANULARITY;
 		MODELSIM 			: integer 	:= G_MODELSIM;
+		-- 1 exposes the observation outputs below, 0 removes them. See the
+		-- note on their declaration; the testbench passes 1, Quartus takes
+		-- the default 0 so the design presents only the board I/O of clause 5.
+		SIGTAP				: integer	:= G_SIGTAP;
 		DATA_BUS_WIDTH 		: integer 	:= 32;
 		ITCM_ADDR_WIDTH 	: integer 	:= G_ADDRWIDTH;
 		DTCM_ADDR_WIDTH 	: integer 	:= G_ADDRWIDTH;
@@ -63,35 +67,70 @@ ENTITY MCU IS
 		HEX4_o				:OUT	STD_LOGIC_VECTOR(6 DOWNTO 0);
 		HEX5_o				:OUT	STD_LOGIC_VECTOR(6 DOWNTO 0);
 
-		--Outputs (used also for Signal-Tap auxiliary pins)
-		pc_o				:OUT	STD_LOGIC_VECTOR(PC_WIDTH-1 DOWNTO 0);
-		instruction_o		:OUT	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+		--=====================================================================
+		-- Observation outputs, for verification and for FPGA validation.
+		--
+		-- Multiplying each width by SIGTAP is what clause 7 asks for: with
+		-- SIGTAP=0 every range below becomes (-1 DOWNTO 0), a null array, so
+		-- the port carries no bits and Quartus creates no pins for it. With
+		-- SIGTAP=1 the ranges are the full widths the testbench expects.
+		-- 267 of the 272 observation bits disappear this way.
+		--=====================================================================
+		pc_o				:OUT	STD_LOGIC_VECTOR(PC_WIDTH*SIGTAP-1 DOWNTO 0);
+		instruction_o		:OUT	STD_LOGIC_VECTOR(DATA_BUS_WIDTH*SIGTAP-1 DOWNTO 0);
 
+		-- These five are std_logic, which has no null form, so they stay.
+		-- Five pins is a price worth paying; smclk_o in particular must stay,
+		-- because it is the only load on PLL_SMCLK and removing it would let
+		-- Quartus strip that PLL out of the design and out of the PPA report.
 		RegWrite_ctrl_o		:OUT 	STD_LOGIC;
 		MemWrite_ctrl_o		:OUT 	STD_LOGIC;
 		Branch_ctrl_o		:OUT 	STD_LOGIC;
 
-		read_data1_o 		:OUT	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
-		read_data2_o 		:OUT	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
-		write_data_o		:OUT	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+		read_data1_o 		:OUT	STD_LOGIC_VECTOR(DATA_BUS_WIDTH*SIGTAP-1 DOWNTO 0);
+		read_data2_o 		:OUT	STD_LOGIC_VECTOR(DATA_BUS_WIDTH*SIGTAP-1 DOWNTO 0);
+		write_data_o		:OUT	STD_LOGIC_VECTOR(DATA_BUS_WIDTH*SIGTAP-1 DOWNTO 0);
 
-		alu_res_o 			:OUT	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+		alu_res_o 			:OUT	STD_LOGIC_VECTOR(DATA_BUS_WIDTH*SIGTAP-1 DOWNTO 0);
 		brTaken_o			:OUT 	STD_LOGIC;
 
-		dtcm_addr_o			:OUT 	STD_LOGIC_VECTOR(DA_WIDTH-1 DOWNTO 0);
-		dtcm_data_wr_o		:OUT 	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
-		dtcm_data_rd_o		:OUT 	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+		dtcm_addr_o			:OUT 	STD_LOGIC_VECTOR(DA_WIDTH*SIGTAP-1 DOWNTO 0);
+		dtcm_data_wr_o		:OUT 	STD_LOGIC_VECTOR(DATA_BUS_WIDTH*SIGTAP-1 DOWNTO 0);
+		dtcm_data_rd_o		:OUT 	STD_LOGIC_VECTOR(DATA_BUS_WIDTH*SIGTAP-1 DOWNTO 0);
 
 		-- SMCLK is generated here for the Basic Timer, which is not
 		-- instantiated yet. Brought out so the clock is observable and so its
 		-- PLL is not optimised away as dead logic before the timer arrives.
 		smclk_o				:OUT	STD_LOGIC;
 
-		mclk_cnt_o			:OUT	STD_LOGIC_VECTOR(CLK_CNT_WIDTH-1 DOWNTO 0)
+		mclk_cnt_o			:OUT	STD_LOGIC_VECTOR(CLK_CNT_WIDTH*SIGTAP-1 DOWNTO 0)
 	);
 END MCU;
 --============================================================================
 ARCHITECTURE structure OF MCU IS
+	-- The reset every module actually sees.
+	--
+	-- KEY0 is the system reset (see the task note), and the DE10-Standard
+	-- pushbuttons are active low - the manual is explicit: "The push-button
+	-- generates a low logic level when it is pressed". Everything downstream
+	-- is active high, the three PLL rst_reset inputs included, so on the FPGA
+	-- the pin has to be inverted here. Without this the board sits in
+	-- permanent reset with no clocks whenever KEY0 is not held down.
+	--
+	-- In simulation the testbench drives rst_i active high directly, so the
+	-- inversion is skipped and every existing .do script keeps working.
+	SIGNAL rst_w			: STD_LOGIC;
+
+	-- Observation taps. The CPU drives these; whether they reach a pin is
+	-- decided by SIGTAP_GEN at the bottom of the file.
+	SIGNAL pc_w				: STD_LOGIC_VECTOR(PC_WIDTH-1 DOWNTO 0);
+	SIGNAL instruction_w	: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+	SIGNAL read_data1_w		: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+	SIGNAL read_data2_w		: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+	SIGNAL write_data_w		: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+	SIGNAL alu_res_w		: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+	SIGNAL mclk_cnt_w		: STD_LOGIC_VECTOR(CLK_CNT_WIDTH-1 DOWNTO 0);
+
 	-- Clocks. Initialised because the MODELSIM=1 clock generators below are
 	-- self-triggering assignments, which never start from 'U'.
 	SIGNAL mclk_w			: STD_LOGIC := '0';
@@ -179,6 +218,11 @@ ARCHITECTURE structure OF MCU IS
 BEGIN
 
 	--=======================================
+	-- Reset polarity
+	--=======================================
+	rst_w	<= rst_i WHEN MODELSIM = 1 ELSE NOT rst_i;
+
+	--=======================================
 	-- Clock generation
 	--
 	-- Three clocks, one PLL each, all from the 50 MHz board oscillator:
@@ -208,21 +252,21 @@ BEGIN
 		U_PLL_MCLK: PLL_MCLK
 		PORT MAP (
 			refclk_clk		=> clk_i,
-			rst_reset		=> rst_i,
+			rst_reset		=> rst_w,
 			outclk_0_clk	=> mclk_w
 		);
 
 		U_PLL_DIVCLK: PLL_DIVCLK
 		PORT MAP (
 			refclk_clk		=> clk_i,
-			rst_reset		=> rst_i,
+			rst_reset		=> rst_w,
 			outclk_0_clk	=> divclk_w
 		);
 
 		U_PLL_SMCLK: PLL_SMCLK
 		PORT MAP (
 			refclk_clk		=> clk_i,
-			rst_reset		=> rst_i,
+			rst_reset		=> rst_w,
 			outclk_0_clk	=> smclk_w
 		);
 	end generate;
@@ -260,7 +304,7 @@ BEGIN
 	)
 	PORT MAP (
 		--Inputs
-		rst_i				=> rst_i,
+		rst_i				=> rst_w,
 		mclk_i				=> mclk_w,
 		divclk_i			=> divclk_w,
 		dtcm_data_rd_i		=> bus_rdata_w,
@@ -271,17 +315,20 @@ BEGIN
 		MemRead_ctrl_o		=> bus_read_w,
 		MemWrite_ctrl_o		=> bus_write_w,
 
-		--Observation
-		pc_o				=> pc_o,
-		instruction_o		=> instruction_o,
+		--Observation. Into signals, not straight out to the ports: the ports
+		--are null when SIGTAP=0, so SIGTAP_GEN decides whether they are
+		--driven at all. The signals stay full width either way, which is what
+		--Signal-Tap taps.
+		pc_o				=> pc_w,
+		instruction_o		=> instruction_w,
 		RegWrite_ctrl_o		=> RegWrite_ctrl_o,
 		Branch_ctrl_o		=> Branch_ctrl_o,
-		read_data1_o		=> read_data1_o,
-		read_data2_o		=> read_data2_o,
-		write_data_o		=> write_data_o,
-		alu_res_o			=> alu_res_o,
+		read_data1_o		=> read_data1_w,
+		read_data2_o		=> read_data2_w,
+		write_data_o		=> write_data_w,
+		alu_res_o			=> alu_res_w,
 		brTaken_o			=> brTaken_o,
-		mclk_cnt_o			=> mclk_cnt_o
+		mclk_cnt_o			=> mclk_cnt_w
 	);
 
 	--=======================================
@@ -317,7 +364,7 @@ BEGIN
 	PORT MAP (
 		--Inputs
 		clk_i 				=> mclk_w,
-		rst_i 				=> rst_i,
+		rst_i 				=> rst_w,
 		dtcm_addr_i 		=> dtcm_addr_w,
 		dtcm_data_wr_i 		=> bus_wdata_w,
 		MemRead_ctrl_i 		=> dtcm_rd_w,
@@ -363,7 +410,7 @@ BEGIN
 	PORT MAP (
 		--Inputs
 		clk_i				=> mclk_w,
-		rst_i				=> rst_i,
+		rst_i				=> rst_w,
 		cs_i				=> cs_ledr_w,
 		MemRead_ctrl_i		=> bus_read_w,
 		MemWrite_ctrl_i		=> bus_write_w,
@@ -399,7 +446,7 @@ BEGIN
 	PORT MAP (
 		--Inputs
 		clk_i				=> mclk_w,
-		rst_i				=> rst_i,
+		rst_i				=> rst_w,
 		cs_i				=> cs_hex0_1_w,
 		sel_i				=> bus_addr_w(0),
 		MemRead_ctrl_i		=> bus_read_w,
@@ -419,7 +466,7 @@ BEGIN
 	PORT MAP (
 		--Inputs
 		clk_i				=> mclk_w,
-		rst_i				=> rst_i,
+		rst_i				=> rst_w,
 		cs_i				=> cs_hex2_3_w,
 		sel_i				=> bus_addr_w(0),
 		MemRead_ctrl_i		=> bus_read_w,
@@ -439,7 +486,7 @@ BEGIN
 	PORT MAP (
 		--Inputs
 		clk_i				=> mclk_w,
-		rst_i				=> rst_i,
+		rst_i				=> rst_w,
 		cs_i				=> cs_hex4_5_w,
 		sel_i				=> bus_addr_w(0),
 		MemRead_ctrl_i		=> bus_read_w,
@@ -520,13 +567,31 @@ BEGIN
 ---------------------------------------------------------------------------------------
 -- Copying out important signals only for Verification and FPGA Velidation(Signal-TAP)
 ---------------------------------------------------------------------------------------
+	-- std_logic ports, no null form, so these are always driven. Five pins.
 	MemWrite_ctrl_o		<=	bus_write_w;							-- CORE output, stall applied
-
-	dtcm_addr_o 		<= 	bus_addr_w;								-- data bus, byte address
-	dtcm_data_wr_o 		<= 	bus_wdata_w;							-- data bus, write data
-	dtcm_data_rd_o		<=	bus_rdata_w;							-- data bus, read data
-
 	smclk_o				<=	smclk_w;								-- Basic Timer clock
+
+	-- Everything with a width is driven only when SIGTAP=1. With SIGTAP=0 the
+	-- ports are null arrays and this whole block disappears, which is how
+	-- clause 7's "removed in the final step using a suitable parameter in the
+	-- generate VHDL statement" is satisfied. Signal-Tap is unaffected: it taps
+	-- the internal signals over JTAG and needs no pins.
+	SIGTAP_GEN: if SIGTAP = 1 generate
+		pc_o			<=	pc_w;									-- IFETCH output
+		instruction_o	<=	instruction_w;							-- IFETCH output
+
+		read_data1_o	<=	read_data1_w;							-- IDECODE output
+		read_data2_o	<=	read_data2_w;							-- IDECODE output
+		write_data_o	<=	write_data_w;							-- IDECODE write-back
+
+		alu_res_o		<=	alu_res_w;								-- EXECUTE output
+
+		dtcm_addr_o 	<= 	bus_addr_w;								-- data bus, byte address
+		dtcm_data_wr_o 	<= 	bus_wdata_w;							-- data bus, write data
+		dtcm_data_rd_o	<=	bus_rdata_w;							-- data bus, read data
+
+		mclk_cnt_o		<=	mclk_cnt_w;								-- MCLK cycle counter
+	end generate;
 ---------------------------------------------------------------------------------------
 
 END structure;

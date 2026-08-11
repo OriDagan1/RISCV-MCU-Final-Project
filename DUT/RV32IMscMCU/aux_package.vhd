@@ -13,6 +13,7 @@ package aux_package is
 		generic(
 			WORD_GRANULARITY 	: boolean 	:= G_WORD_GRANULARITY;
 			MODELSIM 					: integer 	:= G_MODELSIM;
+			SIGTAP						: integer	:= G_SIGTAP;
 			DATA_BUS_WIDTH 		: integer 	:= 32;
 			ITCM_ADDR_WIDTH 	: integer 	:= G_ADDRWIDTH;
 			DTCM_ADDR_WIDTH 	: integer 	:= G_ADDRWIDTH;
@@ -42,28 +43,29 @@ package aux_package is
 			HEX4_o						:OUT	STD_LOGIC_VECTOR(6 DOWNTO 0);
 			HEX5_o						:OUT	STD_LOGIC_VECTOR(6 DOWNTO 0);
 
-			--Outputs (used also for Signal-Tap auxiliary pins)
-			pc_o							:OUT	STD_LOGIC_VECTOR(PC_WIDTH-1 DOWNTO 0);
-			instruction_o			:OUT	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+			--Outputs for verification and FPGA validation. Null ranges when
+			--SIGTAP=0, so they cost no pins - see the note in MCU.vhd.
+			pc_o							:OUT	STD_LOGIC_VECTOR(PC_WIDTH*SIGTAP-1 DOWNTO 0);
+			instruction_o			:OUT	STD_LOGIC_VECTOR(DATA_BUS_WIDTH*SIGTAP-1 DOWNTO 0);
 
 			RegWrite_ctrl_o		:OUT 	STD_LOGIC;
 			MemWrite_ctrl_o		:OUT 	STD_LOGIC;
 			Branch_ctrl_o			:OUT 	STD_LOGIC;
 
-			read_data1_o 			:OUT	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
-			read_data2_o 			:OUT	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
-			write_data_o			:OUT	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+			read_data1_o 			:OUT	STD_LOGIC_VECTOR(DATA_BUS_WIDTH*SIGTAP-1 DOWNTO 0);
+			read_data2_o 			:OUT	STD_LOGIC_VECTOR(DATA_BUS_WIDTH*SIGTAP-1 DOWNTO 0);
+			write_data_o			:OUT	STD_LOGIC_VECTOR(DATA_BUS_WIDTH*SIGTAP-1 DOWNTO 0);
 
-			alu_res_o 				:OUT	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+			alu_res_o 				:OUT	STD_LOGIC_VECTOR(DATA_BUS_WIDTH*SIGTAP-1 DOWNTO 0);
 			brTaken_o					:OUT 	STD_LOGIC;
 
-			dtcm_addr_o				:OUT 	STD_LOGIC_VECTOR(DA_WIDTH-1 DOWNTO 0);
-			dtcm_data_wr_o		:OUT 	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
-			dtcm_data_rd_o		:OUT 	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+			dtcm_addr_o				:OUT 	STD_LOGIC_VECTOR(DA_WIDTH*SIGTAP-1 DOWNTO 0);
+			dtcm_data_wr_o		:OUT 	STD_LOGIC_VECTOR(DATA_BUS_WIDTH*SIGTAP-1 DOWNTO 0);
+			dtcm_data_rd_o		:OUT 	STD_LOGIC_VECTOR(DATA_BUS_WIDTH*SIGTAP-1 DOWNTO 0);
 
 			smclk_o						:OUT	STD_LOGIC;
 
-			mclk_cnt_o				:OUT	STD_LOGIC_VECTOR(CLK_CNT_WIDTH-1 DOWNTO 0)
+			mclk_cnt_o				:OUT	STD_LOGIC_VECTOR(CLK_CNT_WIDTH*SIGTAP-1 DOWNTO 0)
 		);
 	end component;
 ---------------------------------------------------------

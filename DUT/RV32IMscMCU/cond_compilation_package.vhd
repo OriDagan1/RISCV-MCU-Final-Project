@@ -49,6 +49,12 @@ package cond_compilation_package is
 -- 															Conditional Compilation defined by 8-Parameters
 --==================================================================================================================
 	constant G_MODELSIM					: integer	:= 0;											-- options{1=MODELSIM,0=FPGA}
+	-- Clause 7: only the MCU I/O devices get pin locations. The observation
+	-- outputs of MCU.vhd exist for verification and for routing signals to
+	-- pins during validation; with G_SIGTAP=0 their port ranges collapse to
+	-- null and they occupy no pins at all. Signal-Tap itself needs none of
+	-- them - it taps internal nodes over JTAG.
+	constant G_SIGTAP						: integer	:= 0;											-- options{1=observation ports exposed,0=FPGA}
 	constant G_WORD_GRANULARITY : boolean := True;									-- options{True,False}
 	constant G_ADDRWIDTH 				: integer := M9K_TCM8KiB_ADDRWIDTH;	-- options{M9K_MODELSIM_ADDRWIDTH,M4K_ADDRWIDTH} 
 	constant G_DATA_WORDSNUM 		: integer := M9K_TCM8KiB_WORDSNUM;	-- options{M9K_MODELSIM_WORDSNUM,M4K_WORDSNUM}

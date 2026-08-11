@@ -14,6 +14,9 @@ ENTITY tb_RV32I IS
 	generic( 
 		WORD_GRANULARITY 	: boolean 	:= G_WORD_GRANULARITY;
 	  MODELSIM 					: integer 	:= G_MODELSIM;
+		-- 1, not G_SIGTAP: simulation always wants the observation ports.
+		-- G_SIGTAP is 0 so that Quartus builds the MCU with board I/O only.
+		SIGTAP						: integer 	:= 1;
 		DATA_BUS_WIDTH 		: integer 	:= 32;
 		ITCM_ADDR_WIDTH 	: integer 	:= G_ADDRWIDTH;
 		DTCM_ADDR_WIDTH 	: integer 	:= G_ADDRWIDTH;
@@ -78,6 +81,7 @@ BEGIN
 	generic map(
 		WORD_GRANULARITY 	=> WORD_GRANULARITY,
 	  MODELSIM 					=> MODELSIM,
+		SIGTAP						=> SIGTAP,
 		DATA_BUS_WIDTH		=> DATA_BUS_WIDTH,
 		ITCM_ADDR_WIDTH		=> ITCM_ADDR_WIDTH,
 		DTCM_ADDR_WIDTH		=> DTCM_ADDR_WIDTH,
