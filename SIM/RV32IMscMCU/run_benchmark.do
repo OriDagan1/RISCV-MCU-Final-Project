@@ -109,32 +109,13 @@ if {$IMAGE eq "M9K"} {
 echo "TCM = [expr {$WORDS*4/1024}] KiB, image set = $IMAGE"
 echo "loaded $IMG"
 
-# The three PLL clocks. Zoom right in to see the 8:1 ratio: DIVCLK ticks
-# eight times per MCLK, which is what cut the division stall to 9 cycles.
-add wave -divider {Clocks}
-add wave             /tb_RV32I/clk_i
-add wave             /tb_RV32I/CORE/mclk_w
-add wave             /tb_RV32I/CORE/divclk_w
-add wave             /tb_RV32I/CORE/smclk_w
-add wave -divider {CPU}
-add wave -radix hex  /tb_RV32I/pc_o
-add wave -radix hex  /tb_RV32I/instruction_o
-add wave -radix dec  /tb_RV32I/mclk_cnt_o
-add wave -divider {Write-back}
-add wave             /tb_RV32I/RegWrite_ctrl_o
-add wave -radix hex  /tb_RV32I/write_data_o
-add wave -divider {Divider accelerator}
-add wave             $CPU/div_op_w
-add wave             $CPU/div_busy_w
-add wave -radix dec  $CPU/div_ain_w
-add wave -radix dec  $CPU/div_bin_w
-add wave -radix dec  $CPU/div_quot_w
-add wave -radix dec  $CPU/div_rsdu_w
-add wave -radix dec  $CPU/div_res_w
-add wave -divider {Memory}
-add wave             /tb_RV32I/MemWrite_ctrl_o
-add wave -radix hex  /tb_RV32I/dtcm_addr_o
-add wave -radix hex  /tb_RV32I/dtcm_data_wr_o
+# Clocks, CPU, write-back, the division accelerator and the DTCM. Colours
+# come from wave_style.do - see its header for the scheme. Zoom right into
+# the clocks to see the 8:1 ratio: DIVCLK ticks eight times per MCLK, which
+# is what cut the division stall to 9 cycles.
+do wave_style.do
+wave_cpu
+wave_look
 
 # Past reset, so real U/X problems should be reported again.
 run 200 ns

@@ -53,58 +53,11 @@ quietly set NumericStdNoWarnings 1
 #-----------------------------------------------------------------------------
 # Wave window, grouped the way the report reads: clocks, then what the CPU
 # puts on the bus, then the decode, then the tri-state buffers, then the pins.
+# Colours come from wave_style.do - see its header for the scheme.
 #-----------------------------------------------------------------------------
-catch {delete wave *}
-
-add wave -divider {Clocks and reset}
-add wave              /tb_RV32I/rst_i
-add wave              /tb_RV32I/clk_i
-add wave              /tb_RV32I/CORE/mclk_w
-add wave              /tb_RV32I/CORE/divclk_w
-add wave              /tb_RV32I/CORE/smclk_w
-
-add wave -divider {CPU}
-add wave -radix hex   /tb_RV32I/pc_o
-add wave -radix hex   /tb_RV32I/instruction_o
-add wave -radix unsigned /tb_RV32I/CORE/CPU/ID/RF_q(5)
-
-add wave -divider {Data bus, master side}
-add wave -radix hex   /tb_RV32I/CORE/bus_addr_w
-add wave              /tb_RV32I/CORE/bus_read_w
-add wave              /tb_RV32I/CORE/bus_write_w
-add wave -radix hex   /tb_RV32I/CORE/bus_wdata_w
-add wave -radix hex   /tb_RV32I/CORE/bus_rdata_w
-add wave              /tb_RV32I/CORE/io_sel_w
-
-add wave -divider {Address decode - one hot}
-add wave              /tb_RV32I/CORE/cs_ledr_w
-add wave              /tb_RV32I/CORE/cs_hex0_1_w
-add wave              /tb_RV32I/CORE/cs_hex2_3_w
-add wave              /tb_RV32I/CORE/cs_hex4_5_w
-add wave              /tb_RV32I/CORE/cs_sw_w
-
-add wave -divider {BidirPin output enables}
-add wave              /tb_RV32I/CORE/oe_ledr_w
-add wave              /tb_RV32I/CORE/oe_hex0_1_w
-add wave              /tb_RV32I/CORE/oe_hex2_3_w
-add wave              /tb_RV32I/CORE/oe_hex4_5_w
-add wave              /tb_RV32I/CORE/oe_sw_w
-add wave              /tb_RV32I/CORE/oe_none_w
-add wave -radix hex   /tb_RV32I/CORE/io_bus_w
-
-add wave -divider {Pins}
-add wave -radix hex      /tb_RV32I/SW_i
-add wave -radix binary   /tb_RV32I/LEDR_o
-add wave -radix binary   /tb_RV32I/HEX0_o
-add wave -radix binary   /tb_RV32I/HEX1_o
-add wave -radix binary   /tb_RV32I/HEX2_o
-add wave -radix binary   /tb_RV32I/HEX3_o
-add wave -radix binary   /tb_RV32I/HEX4_o
-add wave -radix binary   /tb_RV32I/HEX5_o
-
-configure wave -namecolwidth 260
-configure wave -valuecolwidth 90
-configure wave -timelineunits us
+do wave_style.do
+wave_mcu_io app
+wave_look
 
 # Reset releases at 2 us. Step past it before re-arming the warnings, so a
 # genuine U or X during the program is still reported.

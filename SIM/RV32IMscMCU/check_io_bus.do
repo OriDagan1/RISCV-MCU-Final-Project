@@ -22,36 +22,12 @@ quietly set NumericStdNoWarnings 1
 
 set ERRS 0
 
-catch {delete wave *}
-add wave -divider {Bus, forced}
-add wave -radix hex   /tb_RV32I/CORE/bus_addr_w
-add wave -radix hex   /tb_RV32I/CORE/bus_wdata_w
-add wave              /tb_RV32I/CORE/bus_read_w
-add wave              /tb_RV32I/CORE/bus_write_w
-add wave              /tb_RV32I/CORE/io_sel_w
-add wave -divider {Chip selects}
-add wave              /tb_RV32I/CORE/cs_ledr_w
-add wave              /tb_RV32I/CORE/cs_hex0_1_w
-add wave              /tb_RV32I/CORE/cs_hex2_3_w
-add wave              /tb_RV32I/CORE/cs_hex4_5_w
-add wave              /tb_RV32I/CORE/cs_sw_w
-add wave -divider {BidirPin enables and the shared bus}
-add wave              /tb_RV32I/CORE/oe_ledr_w
-add wave              /tb_RV32I/CORE/oe_hex0_1_w
-add wave              /tb_RV32I/CORE/oe_hex2_3_w
-add wave              /tb_RV32I/CORE/oe_hex4_5_w
-add wave              /tb_RV32I/CORE/oe_sw_w
-add wave              /tb_RV32I/CORE/oe_none_w
-add wave -radix hex   /tb_RV32I/CORE/io_bus_w
-add wave -radix hex   /tb_RV32I/CORE/bus_rdata_w
-add wave -divider {Pins}
-add wave -radix hex      /tb_RV32I/SW_i
-add wave -radix binary   /tb_RV32I/LEDR_o
-add wave -radix binary   /tb_RV32I/HEX0_o
-add wave -radix binary   /tb_RV32I/HEX1_o
-add wave -radix binary   /tb_RV32I/HEX5_o
-configure wave -namecolwidth 260
-configure wave -timelineunits us
+# Colours come from wave_style.do - see its header for the scheme. The "bus"
+# set leaves the CPU traces out: this script drives the bus by hand, so the
+# program counter sits still and would only add noise to the screenshot.
+do wave_style.do
+wave_mcu_io bus
+wave_look
 
 # Plain "set", not "quietly set": inside a proc, quietly set does not reliably
 # create the variable in this ModelSim, and reading it back fails.
