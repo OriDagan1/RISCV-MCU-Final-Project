@@ -96,6 +96,26 @@ echo " HEX5..HEX0    = [examine -radix binary /tb_RV32I/HEX5_o]\
  [examine -radix binary /tb_RV32I/HEX0_o]"
 echo " io_bus_w      = [examine -radix hex /tb_RV32I/CORE/io_bus_w]"
 echo "----------------------------------------------------------------"
-echo " Keep going with:  force -freeze /tb_RV32I/SW_i 00000010 ; run 200 us"
+if {$TEST == 0} {
+	# Measured landmarks. Reset releases at 2 us; the first store lands at
+	# 2.26 us; one loop iteration is exactly 1.28 us (32 MCLK cycles), of
+	# which the seven stores occupy the first 720 ns, 120 ns apart, and the
+	# delay loop the remaining 560 ns.
+	echo " Iteration k stores the value k at  2.26 + 1.28*k  us."
+	echo " Within an iteration starting at T:"
+	echo "   T+0.00us 0x2000 LEDR   T+0.12 0x2004 HEX0   T+0.24 0x2005 HEX1"
+	echo "   T+0.36us 0x2008 HEX2   T+0.48 0x2009 HEX3   T+0.60 0x200C HEX4"
+	echo "   T+0.72us 0x200D HEX5   then 560ns of delay loop"
+	echo ""
+	echo " Zoom somewhere useful - zoom full is 158 iterations and unreadable:"
+	echo "   wave zoom range 1.9us 23us      ;# 16 iterations, digit runs 0-F"
+	echo "   wave zoom range 3.4us 4.9us     ;# one whole iteration"
+	echo "   wave zoom range 3.50us 4.30us   ;# just the seven stores"
+	echo "   wave zoom range 3.72us 3.86us   ;# the HEX1 store at 0x2005"
+	echo "   wave zoom range 4.25us 4.85us   ;# the idle gap, BUF_NONE parks"
+} else {
+	echo " Keep going with:  force -freeze /tb_RV32I/SW_i 00000010 ; run 200 us"
+	echo " Zoom before screenshotting - zoom full is far too coarse to read."
+}
 echo "----------------------------------------------------------------"
-wave zoom full
+wave zoom range 1.9us 23us
