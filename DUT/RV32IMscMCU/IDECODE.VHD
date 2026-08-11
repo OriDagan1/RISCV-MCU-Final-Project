@@ -94,8 +94,15 @@ BEGIN
 	-- UTYPE_OPC is "0010111" and "0110111" = "0010111", which is the opcode of
 	-- auipc alone. lui is "0110111" and needs its own choice here, otherwise it
 	-- falls through to the others branch and every lui yields zero.
+	--
+	-- Loads need their own choice for the same reason. ITYPE_OPC is OP-IMM
+	-- ("0010011"); a load is "0000011" and matches none of the others, so
+	-- without LTYPE_OPC here every lw/lh/lb takes its immediate from the
+	-- others branch and addresses rs1+0 instead of rs1+offset. Offset-zero
+	-- loads still work, which is why the RV32IM benchmark never caught it.
 	with	opc_w select
 		SignExt_o <=	SignExt_Iimm_w														when ITYPE_OPC,
+									SignExt_Iimm_w														when LTYPE_OPC,
 									SignExt_Iimm_w														when INST_JALR(6 DOWNTO 0),
 									SignExt_Simm_w														when STYPE_OPC,
 									SignExt_SBimm_w 													when SBTYPE_OPC,
