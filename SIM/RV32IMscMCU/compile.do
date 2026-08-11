@@ -35,6 +35,7 @@ foreach f [list \
 	$DUT/DIV.vhd                      \
 	$DUT/CDC_SYNC.vhd                 \
 	$DUT/DIV_ACCEL.vhd                \
+	$DUT/BidirPin.vhd                 \
 	$DUT/SevenSegmentEncoder.vhd      \
 	$DUT/GPIO_AddressDecoder.vhd      \
 	$DUT/GPIO_LEDR_Interface.vhd      \

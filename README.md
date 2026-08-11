@@ -114,28 +114,38 @@ the board carries ten of each. `LEDR9`, `LEDR8`, `SW9` and `SW8` are unused.
 
 ```
 bus_addr_w ──> GPIO_AddressDecoder ──> five one-hot chip selects
-                                        │
-   IOLEDR   GPIO_LEDR_Interface  ───────┤   LEDR_o
-   IOSW     GPIO_SW_Interface    ───────┤   SW_i
-   IOHEX01  GPIO_HEX_Pair_Interface ────┤   HEX0_o HEX1_o
-   IOHEX23  GPIO_HEX_Pair_Interface ────┤   HEX2_o HEX3_o
-   IOHEX45  GPIO_HEX_Pair_Interface ────┘   HEX4_o HEX5_o
-                                        │
-                    io_rdata_w  <── OR of the five read paths
-                    bus_rdata_w <── io_rdata_w when io_sel_w else dtcm_q_w
+                                        │                    (each AND bus_read_w
+                                        │                     = one output enable)
+                                        v
+   IOLEDR   GPIO_LEDR_Interface  ──> BUF_LEDR  ──┐   LEDR_o
+   IOSW     GPIO_SW_Interface    ──> BUF_SW    ──┤   SW_i
+   IOHEX01  GPIO_HEX_Pair_Interface > BUF_HEX01 ─┤   HEX0_o HEX1_o
+   IOHEX23  GPIO_HEX_Pair_Interface > BUF_HEX23 ─┤   HEX2_o HEX3_o
+   IOHEX45  GPIO_HEX_Pair_Interface > BUF_HEX45 ─┤   HEX4_o HEX5_o
+                     zeros ───────> BUF_NONE   ──┤
+                                                 │
+                                             io_bus_w   <── the shared I/O bus
+                    bus_rdata_w <── io_bus_w when io_sel_w else dtcm_q_w
 ```
 
-Three things worth knowing:
+Every `BUF_*` is an instance of the supplied `BidirPin.vhd`, the tri-state
+buffer Figure 5 draws between each port and the data bus.
+
+Four things worth knowing:
 
 - **One instance serves two displays.** Inside a pair the two addresses differ
   in bit 0 only, so the decoder gives the pair one chip select and
   `bus_addr_w(0)` picks the digit.
-- **The read paths are OR-ed, not multiplexed.** Every port drives all zeros
-  unless it is both selected and being read, and the chip selects are one-hot
-  by construction. That is the wired-OR Figure 5 draws as tri-state buffers;
-  Cyclone has no internal tri-state, and Quartus turns every internal `'Z'`
-  into exactly this gate. An unmapped I/O address asserts no chip select and
-  therefore reads as zero.
+- **`io_bus_w` genuinely has six drivers** and relies on `std_logic`
+  resolution — it must never be assigned anywhere else. The enables are
+  one-hot: the five chip selects are one-hot by construction, and
+  `oe_none_w` is their NOR, so exactly one buffer drives at any instant and
+  the rest sit at `'Z'`. Cyclone V has no internal tri-state, so Quartus
+  resolves the six buffers back into a multiplexer during synthesis; the `'Z'`
+  only exists in simulation and in the figure.
+- **`BUF_NONE` parks the bus at zero** whenever no port is selected. Without
+  it an unmapped I/O address would leave `io_bus_w` floating at `'Z'` and
+  propagate X into the register file. With it, unmapped I/O reads as zero.
 - **GPIO registers capture on the FALLING edge of MCLK**, as does the DTCM
   (`dmemory` inverts the clock into `altsyncram`), so every target on the data
   bus latches write data at the same instant of the CPU cycle.
@@ -220,6 +230,8 @@ tb_RV32I
     ├── IOLEDR  : GPIO_LEDR_Interface
     ├── IOSW    : GPIO_SW_Interface
     ├── IOHEX01 / IOHEX23 / IOHEX45 : GPIO_HEX_Pair_Interface
+    ├── BUF_LEDR / BUF_SW / BUF_HEX01 / BUF_HEX23 / BUF_HEX45 / BUF_NONE
+    │                          : BidirPin, all six driving /tb_RV32I/CORE/io_bus_w
     └── CPU : RV32I_CORE       /tb_RV32I/CORE/CPU/...
         ├── IFE  (ITCM)
         └── DIVA (divider accelerator)
@@ -244,6 +256,7 @@ DUT/RV32IMscMCU/    design sources
   GPIO_SW_Interface.vhd        PORT_SW, GPI, combinational
   GPIO_HEX_Pair_Interface.vhd  two displays per instance
   SevenSegmentEncoder.vhd      hex nibble to g f e d c b a, active low
+  BidirPin.vhd                 SUPPLIED tri-state buffer, one per port (Fig.5)
   aux_package.vhd     component declarations - update when you change a port list
   const_package.vhd   instruction encodings, ALU opcodes
   cond_compilation_package.vhd   TCM size and widths

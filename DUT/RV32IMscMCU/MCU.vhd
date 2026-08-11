@@ -156,7 +156,25 @@ ARCHITECTURE structure OF MCU IS
 	SIGNAL rd_hex2_3_w		: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
 	SIGNAL rd_hex4_5_w		: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
 	SIGNAL rd_sw_w			: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
-	SIGNAL io_rdata_w		: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+
+	-- The shared I/O read bus of Figure 5. Every port reaches it through a
+	-- BidirPin, so this signal genuinely has six drivers and relies on
+	-- std_logic resolution; it must not be assigned anywhere else.
+	SIGNAL io_bus_w			: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+
+	-- Output enables, one per tri-state buffer. Exactly one is '1' at any
+	-- instant: the chip selects are one-hot, and oe_none_w is their NOR.
+	SIGNAL oe_ledr_w		: STD_LOGIC;
+	SIGNAL oe_hex0_1_w		: STD_LOGIC;
+	SIGNAL oe_hex2_3_w		: STD_LOGIC;
+	SIGNAL oe_hex4_5_w		: STD_LOGIC;
+	SIGNAL oe_sw_w			: STD_LOGIC;
+	SIGNAL oe_none_w		: STD_LOGIC;
+
+	-- What BUF_NONE parks the bus at. A plain signal rather than an aggregate
+	-- in the port map: BidirPin's Dout is an IN port, and only VHDL-2008
+	-- accepts an expression there.
+	SIGNAL io_park_w		: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
 
 BEGIN
 
@@ -435,20 +453,69 @@ BEGIN
 	);
 
 	--=======================================
+	-- The shared I/O bus - the tri-state buffers of Figure 5
+	--=======================================
+	-- Figure 5 draws each peripheral reaching the data bus through a
+	-- tri-state buffer, and BidirPin.vhd is that buffer: it drives IOpin with
+	-- Dout while en = '1' and releases it to 'Z' otherwise. One instance per
+	-- device, all sharing io_bus_w, is the figure drawn literally.
+	--
+	-- Only the port -> CPU direction is built here. BidirPin also brings the
+	-- bus back out on Din, which is what a truly bidirectional data bus would
+	-- use to deliver store data, but this core has separate write and read
+	-- buses (bus_wdata_w and bus_rdata_w out of RV32I_CORE), so store data
+	-- reaches the ports on bus_wdata_w and every Din is left open.
+	--
+	-- Cyclone V has no internal tri-state. Quartus resolves these buffers
+	-- into a multiplexer during synthesis, which is why the ports also drive
+	-- zeros when deselected: the behaviour is identical either way.
+	oe_ledr_w	<= cs_ledr_w	AND bus_read_w;
+	oe_hex0_1_w	<= cs_hex0_1_w	AND bus_read_w;
+	oe_hex2_3_w	<= cs_hex2_3_w	AND bus_read_w;
+	oe_hex4_5_w	<= cs_hex4_5_w	AND bus_read_w;
+	oe_sw_w		<= cs_sw_w		AND bus_read_w;
+
+	-- A bus with every buffer released floats at 'Z', and 'Z' propagated into
+	-- the register file would show up as red in the wave window and as
+	-- metavalue warnings rather than as data. BUF_NONE parks the bus at zero
+	-- whenever no device is driving it, which also gives the reads-as-zero
+	-- behaviour that unmapped I/O addresses need - 0x2014, 0x2018, 0x201C and
+	-- everything from 0x2020 up, all reserved for the peripherals of clause 6.
+	oe_none_w	<= NOT (oe_ledr_w OR oe_hex0_1_w OR oe_hex2_3_w OR oe_hex4_5_w OR oe_sw_w);
+
+	BUF_LEDR: BidirPin
+	generic map(width => DATA_BUS_WIDTH)
+	PORT MAP (Dout => rd_ledr_w,	en => oe_ledr_w,	Din => OPEN, IOpin => io_bus_w);
+
+	BUF_HEX01: BidirPin
+	generic map(width => DATA_BUS_WIDTH)
+	PORT MAP (Dout => rd_hex0_1_w,	en => oe_hex0_1_w,	Din => OPEN, IOpin => io_bus_w);
+
+	BUF_HEX23: BidirPin
+	generic map(width => DATA_BUS_WIDTH)
+	PORT MAP (Dout => rd_hex2_3_w,	en => oe_hex2_3_w,	Din => OPEN, IOpin => io_bus_w);
+
+	BUF_HEX45: BidirPin
+	generic map(width => DATA_BUS_WIDTH)
+	PORT MAP (Dout => rd_hex4_5_w,	en => oe_hex4_5_w,	Din => OPEN, IOpin => io_bus_w);
+
+	BUF_SW: BidirPin
+	generic map(width => DATA_BUS_WIDTH)
+	PORT MAP (Dout => rd_sw_w,		en => oe_sw_w,		Din => OPEN, IOpin => io_bus_w);
+
+	io_park_w	<= (OTHERS => '0');
+
+	BUF_NONE: BidirPin
+	generic map(width => DATA_BUS_WIDTH)
+	PORT MAP (Dout => io_park_w,	en => oe_none_w,	Din => OPEN, IOpin => io_bus_w);
+
+	--=======================================
 	-- Read data multiplexer
 	--=======================================
-	-- Each port drives all zeros unless it is both selected and being read,
-	-- and the chip selects are one-hot by construction, so OR-ing the five
-	-- read paths is the wired-OR that Figure 5 draws as tri-state buffers on
-	-- a shared bus. Cyclone has no internal tri-state anyway; Quartus turns
-	-- every internal 'Z' into exactly this gate.
-	--
-	-- An unmapped I/O address (0x2014, 0x2018, 0x201C and everything from
-	-- 0x2020 up, reserved for the peripherals of clause 6) asserts no chip
-	-- select at all and therefore reads as zero.
-	io_rdata_w	<= rd_ledr_w OR rd_hex0_1_w OR rd_hex2_3_w OR rd_hex4_5_w OR rd_sw_w;
-
-	bus_rdata_w	<= io_rdata_w WHEN io_sel_w = '1' ELSE dtcm_q_w;
+	-- The last hop: bit 13 of the address picks between the I/O bus and the
+	-- DTCM. This one is a real multiplexer, not a shared bus - the DTCM
+	-- output is an altsyncram q port and never goes high impedance.
+	bus_rdata_w	<= io_bus_w WHEN io_sel_w = '1' ELSE dtcm_q_w;
 
 ---------------------------------------------------------------------------------------
 -- Copying out important signals only for Verification and FPGA Velidation(Signal-TAP)

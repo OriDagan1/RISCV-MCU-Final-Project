@@ -244,6 +244,21 @@ package aux_package is
 -- QUARTUS/gen_plls.tcl, and MCU.vhd declares them locally because they are
 -- generated artefacts rather than sources of this design.
 ---------------------------------------------------------
+	-- The tri-state buffer of Figure 5, supplied with the project. Drives
+	-- IOpin from Dout while en = '1' and releases it to 'Z' otherwise, with
+	-- Din always following the bus. MCU.vhd puts one on each GPIO read path.
+	COMPONENT BidirPin IS
+		generic(
+			width	: integer := 16
+		);
+		PORT(
+			Dout	: IN	STD_LOGIC_VECTOR(width-1 DOWNTO 0);
+			en		: IN	STD_LOGIC;
+			Din		: OUT	STD_LOGIC_VECTOR(width-1 DOWNTO 0);
+			IOpin	: INOUT	STD_LOGIC_VECTOR(width-1 DOWNTO 0)
+		);
+	END COMPONENT;
+---------------------------------------------------------
 	COMPONENT GPIO_AddressDecoder IS
 		generic(
 			DA_WIDTH			: integer := 14
