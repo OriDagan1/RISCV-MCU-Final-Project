@@ -111,8 +111,9 @@ echo "loaded $IMG"
 
 # Clocks, CPU, write-back, the division accelerator and the DTCM. Colours
 # come from wave_style.do - see its header for the scheme. Zoom right into
-# the clocks to see the 8:1 ratio: DIVCLK ticks eight times per MCLK, which
-# is what cut the division stall to 9 cycles.
+# the clocks to see the 4:1 ratio: DIVCLK ticks four times per MCLK. DIVCLK
+# was 200 MHz (8:1); it is now 100 MHz so the divider has margin to close
+# timing on the FPGA. See the table in QUARTUS/gen_plls.tcl.
 do wave_style.do
 wave_cpu
 wave_look

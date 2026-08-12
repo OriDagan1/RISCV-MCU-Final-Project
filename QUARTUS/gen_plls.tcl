@@ -22,9 +22,23 @@ package require -exact qsys 21.1
 set REFCLK_MHZ 50.0
 set CLOCKS {
 	{PLL_MCLK    25.0   "CPU clock"}
-	{PLL_DIVCLK  200.0  "division accelerator"}
+	{PLL_DIVCLK  100.0  "division accelerator"}
 	{PLL_SMCLK   25.0   "Basic Timer source clock"}
 }
+
+# DIVCLK was 200 MHz, which is well above what the divider is likely to close
+# timing at - a figure of about 130 MHz has been reported for this datapath.
+# 100 MHz leaves a comfortable margin for the first FPGA validation run and
+# keeps a clean 4:1 ratio with MCLK. It costs cycles and nothing else:
+#
+#   DIVCLK    ratio   benchmark cycles   golden model
+#   200 MHz     8:1        276              matches
+#   150 MHz     6:1        292              matches
+#   100 MHz     4:1        340              matches
+#    50 MHz     2:1        484              matches
+#
+# Raise it again once the real fmax of the DIVCLK domain is known from the
+# Timing Analyzer, then re-run gen_plls.bat and re-verify.
 
 # DE10-Standard, Cyclone V SoC
 set DEVICE_FAMILY {Cyclone V}
