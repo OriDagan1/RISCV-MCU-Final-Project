@@ -6,6 +6,10 @@ SIM/**/vsim.wlf
 SIM/**/wlft*
 SIM/**/*.mem
 SIM/**/modelsim.ini
+# Switching-activity dumps for the Quartus Power Analyzer. Megabytes, and
+# regenerable in a minute with "do gen_vcd.do", so the script is committed
+# and the output is not.
+SIM/**/*.vcd
 
 # Quartus IP generation. The .qsys sources, the synthesis output and the
 # ModelSim simulation models ARE committed - the design needs them. Ignored
