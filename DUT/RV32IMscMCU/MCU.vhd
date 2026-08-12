@@ -113,9 +113,9 @@ ARCHITECTURE structure OF MCU IS
 	-- KEY0 is the system reset (see the task note), and the DE10-Standard
 	-- pushbuttons are active low - the manual is explicit: "The push-button
 	-- generates a low logic level when it is pressed". Everything downstream
-	-- is active high, the three PLL rst_reset inputs included, so on the FPGA
-	-- the pin has to be inverted here. Without this the board sits in
-	-- permanent reset with no clocks whenever KEY0 is not held down.
+	-- is active high, so on the FPGA the pin has to be inverted here. Without
+	-- this the board sits in permanent reset whenever KEY0 is not held down.
+	-- It does not reach the PLLs - see the note at CLK_FPGA below.
 	--
 	-- In simulation the testbench drives rst_i active high directly, so the
 	-- inversion is skipped and every existing .do script keeps working.
@@ -247,26 +247,36 @@ BEGIN
 	--
 	-- Quartus note: each PLL output is a generated clock, so the .sdc needs a
 	-- create_clock on clk_i and derive_pll_clocks to pick up all three.
+	--
+	-- rst_reset is tied low deliberately: KEY0 must NOT reset the PLLs. It is
+	-- the system reset, and if it also stopped the clocks then every press
+	-- would kill MCLK, DIVCLK and SMCLK together, and the logic would then run
+	-- on an unlocked, off-frequency clock for the whole relock time after the
+	-- release - because rst_w drops the instant the key comes up, well before
+	-- the PLLs are stable again. Invisible on the LEDs, but it corrupts a
+	-- Signal-Tap capture and freezes acquisition while the key is down.
+	-- The PLLs lock once after configuration and stay locked; KEY0 resets the
+	-- CPU, the memory and the peripherals, which is all a system reset means.
 	--=======================================
 	CLK_FPGA: if MODELSIM = 0 generate
 		U_PLL_MCLK: PLL_MCLK
 		PORT MAP (
 			refclk_clk		=> clk_i,
-			rst_reset		=> rst_w,
+			rst_reset		=> '0',
 			outclk_0_clk	=> mclk_w
 		);
 
 		U_PLL_DIVCLK: PLL_DIVCLK
 		PORT MAP (
 			refclk_clk		=> clk_i,
-			rst_reset		=> rst_w,
+			rst_reset		=> '0',
 			outclk_0_clk	=> divclk_w
 		);
 
 		U_PLL_SMCLK: PLL_SMCLK
 		PORT MAP (
 			refclk_clk		=> clk_i,
-			rst_reset		=> rst_w,
+			rst_reset		=> '0',
 			outclk_0_clk	=> smclk_w
 		);
 	end generate;
