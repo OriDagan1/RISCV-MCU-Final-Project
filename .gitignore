@@ -23,6 +23,11 @@ QUARTUS/*/*.csv
 QUARTUS/*/synthesis/*.debuginfo
 QUARTUS/.qsys_edit/
 
+# Editor backups. The submission requires DUT/ to contain design files only,
+# and a *.vhd.bak sitting next to the real source is both clutter and a trap
+# for anyone adding files to the Quartus project by wildcard.
+*.bak
+
 # Office scratch files. Word leaves these next to an open document: "~$name"
 # is the lock file that records who has it open, and ~WRLnnnn.tmp is crash
 # recovery scratch. The documents themselves under DOC/ are committed.
