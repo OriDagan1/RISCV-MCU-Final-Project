@@ -42,7 +42,7 @@ the data memory.
  TCM = 8 KiB, image set = M9K
  PC               = 0068
  instruction      = 00000063
- cycles to finish = 340
+ cycles to finish = 276
  compared 1024 words, 0 mismatches
  *** DTCM MATCHES THE GOLDEN MODEL ***
 
@@ -189,8 +189,13 @@ forum post, each clock gets its own PLL, all from the 50 MHz board oscillator:
 | Clock | Frequency | Drives |
 |---|---|---|
 | MCLK | 25 MHz | the CPU |
-| DIVCLK | 100 MHz | the division accelerator |
+| DIVCLK | 200 MHz | the division accelerator |
 | SMCLK | 25 MHz | the Basic Timer |
+
+Note: the first Quartus compile reported **2 PLLs, not 3**. PLL_MCLK and
+PLL_SMCLK are byte-for-byte identical — same 50 MHz reference, same 25 MHz
+output — so the fitter appears to merge them. Worth confirming in the Fitter
+resource report before quoting a PLL count in the clause 6 Area table.
 
 These are `altera_pll` (PLL Intel FPGA IP), *not* the ALTPLL that came with the
 project — ALTPLL is a Cyclone II megafunction the Cyclone V does not support.
@@ -204,29 +209,39 @@ the professor left declared and unused for exactly this:
 
 **Both branches run at the same frequencies by construction**, because both
 read `clk_config_package.vhd`, which is *generated* by `QUARTUS/gen_plls.tcl`
-from the same numbers it builds the IP with. Verified: the benchmark gives 340
+from the same numbers it builds the IP with. Verified: the benchmark gives 276
 cycles and 1024/1024 either way.
 
 **To retune a clock**, edit the `CLOCKS` list in `QUARTUS/gen_plls.tcl` and run
 `QUARTUS\gen_plls.bat`. That regenerates the IP *and* rewrites the VHDL
 constants, so the two can never drift apart. Then `do compile.do`.
 
-**DIVCLK is deliberately conservative.** It was 200 MHz, which is above what
-the divider is likely to close timing at — around 130 MHz has been reported for
-this datapath. It is now 100 MHz so the first FPGA validation run has margin.
-The frequency changes the cycle count and nothing else; the golden model
-matches at every setting:
+**The clock frequencies are backed by a Timing Analyzer run**, on the
+Slow 1100mV 85C model, Quartus 21.1 Lite, 5CSXFC6D6F31C6:
+
+| Domain | requested | fmax achieved | margin |
+|---|---|---|---|
+| MCLK | 25 MHz | **29.04 MHz** | 16% |
+| DIVCLK | 200 MHz | **238.61 MHz** | 19% |
+
+**MCLK is the tight one, and it is where the critical path lives** — a
+single-cycle core doing fetch, decode, ALU, memory and write-back in one
+cycle. 29 MHz is the ceiling if anyone wants to raise it.
+
+DIVCLK was briefly dropped to 100 MHz on a secondhand report of the divider
+closing at only ~130 MHz. That figure does not apply to this design, so it is
+back at 200 MHz. The frequency costs nothing but cycles; the golden model
+matches at every setting measured:
 
 | DIVCLK | ratio to MCLK | benchmark cycles |
 |---|---|---|
-| 200 MHz | 8:1 | 276 |
+| 200 MHz | 8:1 | **276** |
 | 150 MHz | 6:1 | 292 |
-| 100 MHz | 4:1 | **340** |
+| 100 MHz | 4:1 | 340 |
 | 50 MHz | 2:1 | 484 |
 
 The benchmark performs 16 divisions, so each halving of DIVCLK costs about
-four MCLK cycles per division. Once the Timing Analyzer gives the real fmax of
-the DIVCLK domain, raise it and re-verify.
+four MCLK cycles per division.
 
 There is a ceiling on DIVCLK: `DIVBUSY` is high for 32 DIVCLK cycles, and the
 MCLK-side synchronizer in `DIV_ACCEL` needs it high for at least 2 MCLK cycles,
