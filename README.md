@@ -289,18 +289,20 @@ DUT/RV32IMscMCU/    design sources
   GPIO_HEX_Pair_Interface.vhd  two displays per instance
   SevenSegmentEncoder.vhd      hex nibble to g f e d c b a, active low
   BidirPin.vhd                 SUPPLIED tri-state buffer, one per port (Fig.5)
+  BASIC_TIMER.vhd     Basic Timer top (Fig.7) - built, not yet memory-mapped
+  BTCNT / BT_CLKDIV / BT_OUTPUT_UNIT / BT_CAPTURE
   aux_package.vhd     component declarations - update when you change a port list
   const_package.vhd   instruction encodings, ALU opcodes
   cond_compilation_package.vhd   TCM size and widths
 TB/RV32IMscMCU/     testbenches
-SIM/RV32IMscMCU/    compile.do, run_benchmark.do
+SIM/RV32IMscMCU/    compile.do, run_benchmark.do, run_timer.do
 QUARTUS/            gen_plls.tcl + .bat, the three PLL .qsys files
   PLL_MCLK/ PLL_DIVCLK/ PLL_SMCLK/   generated IP: synthesis/ and simulation/
 ```
 
-The Basic Timer of Figure 7 lives on `feature/timer`, not here — it is built
-and tested but not yet memory-mapped, so it waits for the GPIO work to land
-before it gets a bus interface.
+The Basic Timer of Figure 7 is built and tested but not yet memory-mapped:
+nothing in `MCU.vhd` instantiates it, and it answers no address. `run_timer.do`
+drives its two testbenches directly. Giving it a bus interface is the next step.
 
 If you change any entity's ports, update its component declaration in
 `aux_package.vhd` too, or you get a confusing elaboration error rather than a

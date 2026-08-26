@@ -376,6 +376,38 @@ package aux_package is
 			divclk_i		: IN 	STD_LOGIC
 		);
 	END COMPONENT;
+---------------------------------------------------------
+-- Basic Timer (Fig.7). Declared here so MCU.vhd can instantiate it once the
+-- memory-mapped wrapper is added; the timer itself has no bus interface on
+-- purpose, see the header of BASIC_TIMER.vhd.
+	COMPONENT basic_timer IS
+		generic(
+			N : positive := 32
+		);
+		PORT(
+			--Clock and reset
+			smclk_i		: IN 	STD_LOGIC;
+			rst_i		: IN 	STD_LOGIC;
+
+			--Control registers
+			btctl1_i	: IN 	STD_LOGIC_VECTOR(7 DOWNTO 0);
+			btctl2_i	: IN 	STD_LOGIC_VECTOR(7 DOWNTO 0);
+
+			--Compare registers
+			btcmpr0_i	: IN 	STD_LOGIC_VECTOR(N-1 DOWNTO 0);
+			btcmpr1_i	: IN 	STD_LOGIC_VECTOR(N-1 DOWNTO 0);
+
+			--Capture inputs
+			capin1_i	: IN 	STD_LOGIC;
+			capin2_i	: IN 	STD_LOGIC;
+
+			--Outputs
+			pwmout_o	: OUT	STD_LOGIC;
+			btifg_o		: OUT	STD_LOGIC;
+			btcapr_o	: OUT	STD_LOGIC_VECTOR(N-1 DOWNTO 0);
+			btcnt_o		: OUT	STD_LOGIC_VECTOR(N-1 DOWNTO 0)
+		);
+	END COMPONENT;
 
 end aux_package;
 

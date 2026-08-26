@@ -41,6 +41,11 @@ foreach f [list \
 	$DUT/GPIO_LEDR_Interface.vhd      \
 	$DUT/GPIO_SW_Interface.vhd        \
 	$DUT/GPIO_HEX_Pair_Interface.vhd  \
+	$DUT/BT_CLKDIV.vhd                \
+	$DUT/BTCNT.vhd                    \
+	$DUT/BT_OUTPUT_UNIT.vhd           \
+	$DUT/BT_CAPTURE.vhd               \
+	$DUT/BASIC_TIMER.vhd              \
 	$DUT/CONTROL.VHD                  \
 	$DUT/IDECODE.VHD                  \
 	$DUT/IFETCH.VHD                   \
@@ -56,7 +61,9 @@ foreach f [list \
 	$TB/tb_GPIO_AddressDecoder.vhd    \
 	$TB/tb_GPIO_LEDR_Interface.vhd    \
 	$TB/tb_GPIO_SW_Interface.vhd      \
-	$TB/tb_GPIO_HEX_Pair_Interface.vhd ] {
+	$TB/tb_GPIO_HEX_Pair_Interface.vhd \
+	$TB/tb_btcnt.vhd                  \
+	$TB/tb_basic_timer.vhd            ] {
 	echo "vcom $f"
 	if {[catch {vcom -2008 -quiet $f} msg]} {
 		echo "COMPILE FAILED: $f"
