@@ -34,6 +34,11 @@
 --   16. all ones and all zeros patterns on both compare registers
 --   17. an unknown chip select ('X', 'U', 'Z') must not open the port
 --   18. normal operation resumes after a reset
+--   19. bt_irq_o - the BTIFG edge detector: low while btifg_i is low, one
+--       MCLK-cycle pulse per rising edge of btifg_i (including when held
+--       high for a full 8 MCLK periods, the BTSSEL=11 case), no pulse on a
+--       falling edge, two events give two pulses, low during and across a
+--       reset, and undisturbed by a concurrent bus access
 --
 -- Run:  vcom clk_config_package.vhd BASIC_TIMER_INTERFACE.vhd tb_basic_timer_interface.vhd
 --       vsim -voptargs=+acc work.tb_basic_timer_interface
@@ -70,12 +75,14 @@ ARCHITECTURE sim OF tb_basic_timer_interface IS
 	SIGNAL memwr_w			: STD_LOGIC := '0';
 	SIGNAL data_wr_w		: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0) := (OTHERS => '0');
 	SIGNAL btcapr_w			: STD_LOGIC_VECTOR(N-1 DOWNTO 0) := (OTHERS => '0');
+	SIGNAL btifg_w			: STD_LOGIC := '0';
 
 	SIGNAL data_rd_w		: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
 	SIGNAL btctl1_w			: STD_LOGIC_VECTOR(CTL_WIDTH-1 DOWNTO 0);
 	SIGNAL btctl2_w			: STD_LOGIC_VECTOR(CTL_WIDTH-1 DOWNTO 0);
 	SIGNAL btcmpr0_w		: STD_LOGIC_VECTOR(N-1 DOWNTO 0);
 	SIGNAL btcmpr1_w		: STD_LOGIC_VECTOR(N-1 DOWNTO 0);
+	SIGNAL bt_irq_w			: STD_LOGIC;
 
 	SIGNAL done_w			: BOOLEAN := FALSE;
 
@@ -140,7 +147,9 @@ BEGIN
 		MemWrite_ctrl_i	=> memwr_w,
 		data_wr_i		=> data_wr_w,
 		btcapr_i		=> btcapr_w,
+		btifg_i			=> btifg_w,
 		data_rd_o		=> data_rd_w,
+		bt_irq_o		=> bt_irq_w,
 		btctl1_o		=> btctl1_w,
 		btctl2_o		=> btctl2_w,
 		btcmpr0_o		=> btcmpr0_w,
@@ -256,6 +265,16 @@ BEGIN
 			wait for HOLD;
 			check_vec(data_rd_w, exp, msg);
 			idle;
+			wait for HOLD;
+		end procedure;
+
+		-- Advance N MCLK rising edges, then settle by HOLD - for the BTIFG
+		-- edge detector checks, which are not tied to a register write/read.
+		procedure step_mclk(n : POSITIVE) is
+		begin
+			for i in 1 to n loop
+				wait until rising_edge(clk_w);
+			end loop;
 			wait for HOLD;
 		end procedure;
 
@@ -522,6 +541,113 @@ BEGIN
 		bus_write(R_BTCMPR0, zext_word(word(88)));
 		bus_read(R_BTCTL1,  zext_ctl(x"3C"),      "T18 normal operation resumes after reset");
 		bus_read(R_BTCMPR0, zext_word(word(88)),  "T18 BTCMPR0 works again after reset");
+
+		--===============================================================
+		-- 19  BTIFG edge detector : bt_irq_o, one MCLK pulse per event
+		--
+		-- btifg_w starts at '0' and nothing before this point has touched it,
+		-- so bt_irq_w is already settled low here.
+		--===============================================================
+		REPORT "--- BTIFG edge detector (bt_irq_o) ---" SEVERITY note;
+
+		check(bt_irq_w = '0', "T19 bt_irq_o low while btifg_i is low");
+
+		-- A rising edge on btifg_i produces a pulse exactly one MCLK period
+		-- long, and holding btifg_i high for the remaining 7 of 8 MCLK
+		-- periods (the BTSSEL=11 case) produces no further pulses - this is
+		-- the whole point of the edge detector.
+		wait until rising_edge(clk_w);
+		btifg_w <= '1';
+		wait for HOLD;
+		check(bt_irq_w = '1', "T19 bt_irq_o pulses on the rising edge of btifg_i");
+
+		for i in 2 to 8 loop
+			wait until rising_edge(clk_w);
+			wait for HOLD;
+			check(bt_irq_w = '0',
+			      "T19 no repeated pulse while btifg_i held high, edge " & integer'image(i));
+		end loop;
+
+		-- A falling edge on btifg_i produces no pulse.
+		wait until rising_edge(clk_w);
+		btifg_w <= '0';
+		wait for HOLD;
+		check(bt_irq_w = '0', "T19 bt_irq_o does not pulse on the falling edge of btifg_i");
+		wait until rising_edge(clk_w);
+		wait for HOLD;
+		check(bt_irq_w = '0', "T19 bt_irq_o still low one cycle after the falling edge");
+
+		-- Two separate events produce two separate pulses.
+		wait until rising_edge(clk_w);
+		btifg_w <= '1';
+		wait for HOLD;
+		check(bt_irq_w = '1', "T19 first of two separate events pulses");
+
+		wait until rising_edge(clk_w);
+		btifg_w <= '0';
+		wait for HOLD;
+		check(bt_irq_w = '0', "T19 first pulse cleared after one cycle");
+
+		wait until rising_edge(clk_w);
+		wait for HOLD;
+		check(bt_irq_w = '0', "T19 idle between the two events");
+
+		wait until rising_edge(clk_w);
+		btifg_w <= '1';
+		wait for HOLD;
+		check(bt_irq_w = '1', "T19 second of two separate events pulses");
+
+		wait until rising_edge(clk_w);
+		btifg_w <= '0';
+		wait for HOLD;
+		check(bt_irq_w = '0', "T19 second pulse cleared after one cycle");
+
+		-- bt_irq_o must be '0' during reset and while reset is held, with
+		-- btifg_i idle - the same idle-input idiom TEST 1 uses for the
+		-- pushbutton port. This module has no independent reset gate on
+		-- bt_irq_o itself (it is bt_irq_o <= btifg_i AND NOT <register>, per
+		-- design), but in the integrated MCU basic_timer_interface and
+		-- basic_timer share the same rst_w, so btifg_i is forced low by the
+		-- same reset event that clears this module - an isolated unit
+		-- testbench forcing btifg_i high across a reset it does not also
+		-- apply to a (nonexistent, here) upstream timer would not reflect
+		-- any reachable system state.
+		step_mclk(1);
+		check(bt_irq_w = '0', "T19 bt_irq_o idle before reset");
+
+		rst_w <= '1';
+		WAIT FOR HOLD;
+		check(bt_irq_w = '0', "T19 bt_irq_o stays low the instant reset asserts");
+
+		step_mclk(3);
+		check(bt_irq_w = '0', "T19 bt_irq_o stays low while reset is held");
+
+		rst_w <= '0';
+		step_mclk(1);
+		check(bt_irq_w = '0', "T19 bt_irq_o stays low immediately after reset releases");
+
+		-- Driving btifg_i and a bus access at the same time disturbs neither.
+		bus_write(R_BTCTL1, zext_ctl(x"5A"));
+
+		wait until rising_edge(clk_w);
+		btifg_w <= '1';
+		aim(R_BTCTL1);
+		memrd_w	<= '1';
+		memwr_w	<= '0';
+		wait for HOLD;
+		check_vec(data_rd_w, zext_ctl(x"5A"),
+		          "T19 bus read unaffected by a concurrent btifg_i rising edge");
+		check(bt_irq_w = '1', "T19 bt_irq_o pulses correctly during a concurrent bus read");
+		idle;
+		wait for HOLD;
+
+		wait until rising_edge(clk_w);
+		btifg_w <= '0';
+		wait for HOLD;
+		check(bt_irq_w = '0',
+		      "T19 bt_irq_o pulse still exactly one cycle with bus traffic present");
+
+		bus_read(R_BTCTL1, zext_ctl(x"5A"), "T19 BTCTL1 unaffected by the concurrent btifg_i event");
 
 		--===============================================================
 		report "==================================================" severity note;

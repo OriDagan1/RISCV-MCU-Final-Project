@@ -72,6 +72,45 @@
 -- drives zeros when it is not selected, so the I/O read paths can be OR-ed together.
 -- Cyclone devices have no internal tri-state anyway - Quartus converts every internal
 -- 'Z' into exactly this multiplexer.
+--
+-- BTIFG_I / BT_IRQ_O - ONE PULSE PER TIMER EVENT, SAFE ONLY BECAUSE OF THE CLOCK
+-- ARCHITECTURE. btifg_o out of basic_timer is a LEVEL, not a pulse: in the default
+-- mode BTINT="00" it is equ0_w, which is high while BTCNT >= BTCL0, and the counter
+-- clears on the same edge - so it is high for exactly one BTCLK period, which is one,
+-- two, four or eight MCLK periods depending on BTSSEL. GPIO_PB_Interface already hands
+-- the interrupt controller one-MCLK-cycle pulses on key1_irq_o..key3_irq_o; if this
+-- module handed it a multi-cycle level instead, the flag would re-arm the instant the
+-- service routine cleared it and the CPU would spin in interrupts forever. bt_irq_o is
+-- this module's edge detector on btifg_i, resampled and compared one clk_i cycle
+-- later, so it produces exactly one pulse per rising edge of btifg_i regardless of how
+-- many MCLK cycles that level stays high.
+--
+-- Detecting that edge with a single register and no synchronizer is safe ONLY because
+-- of the clock architecture decision in MCU.vhd: SMCLK, and therefore BTCLK (one of
+-- its BTSSEL-selected taps), is now a synchronous branch of MCLK rather than an
+-- independent PLL output, guarded by the ASSERT above. Were BTCLK ever genuinely
+-- asynchronous to clk_i again, btifg_i would need a toggle-pulse synchronizer here
+-- instead - a plain two-flop level synchronizer can miss a pulse narrower than one
+-- destination clock period. That cannot happen in this design as built, since BTCLK is
+-- derived from MCLK and can only ever be equal to or slower than it, but it is exactly
+-- the risk this file's own ASSERT exists to rule out before it could arise.
+--
+-- The edge is detected on the RISING edge of clk_i, unlike the register writes above,
+-- which capture on the falling edge. This has to match GPIO_PB_Interface, which
+-- detects its key-release edges on the rising edge of clk_i, because both feed the
+-- same interrupt controller and a mismatched sampling edge would skew one source's
+-- pulses relative to the others by half an MCLK cycle for no reason.
+--
+-- DOCUMENTED LIMITATION, NOT A TASK REQUIREMENT: with BTSSEL="00" and BTCMPR0=0,
+-- BTCL0 is also 0 (it self-starts from BTCMPR0, see BASIC_TIMER.vhd's header) and
+-- EQU0 = "BTCNT >= BTCL0" is then true on every single BTCLK cycle - it never falls,
+-- so it never has a rising edge to detect, and bt_irq_o never pulses. BTCMPR0 must be
+-- programmed to at least 1 before BTINT="00" can generate any interrupt event. The
+-- task definition does not discuss this; it falls directly out of the EQU0 definition
+-- of Fig.7 once a rising-edge pulse extractor sits downstream of it.
+--
+-- No IFG register, no IE bit, no masking and no clearing logic live here. Those
+-- belong to the interrupt controller, which is not yet written.
 ---------------------------------------------------------------------------------------------
 LIBRARY IEEE;
 USE IEEE.STD_LOGIC_1164.ALL;
@@ -103,8 +142,15 @@ ENTITY basic_timer_interface IS
 		--From the timer, the captured count
 		btcapr_i			: IN	STD_LOGIC_VECTOR(N-1 DOWNTO 0);
 
+		--From the timer, the BTIFG level - one BTCLK wide, see the header
+		btifg_i				: IN	STD_LOGIC;
+
 		--Outputs
 		data_rd_o			: OUT	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+
+		--To the interrupt controller: one MCLK cycle per event, matches
+		--key1_irq_o..key3_irq_o out of GPIO_PB_Interface
+		bt_irq_o			: OUT	STD_LOGIC;
 
 		--To the timer, the registers of Fig.7
 		btctl1_o			: OUT	STD_LOGIC_VECTOR(CTL_WIDTH-1 DOWNTO 0);
@@ -139,6 +185,11 @@ ARCHITECTURE rtl OF basic_timer_interface IS
 	SIGNAL rd_cmpr1_w		: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
 	SIGNAL rd_capr_w		: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
 	SIGNAL rdata_w			: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+
+	-- btifg_i delayed by one clk_i cycle, so the edge detector below has
+	-- something to compare against. See the header for why no synchronizer
+	-- is needed here.
+	SIGNAL btifg_q			: STD_LOGIC;
 
 BEGIN
 
@@ -245,5 +296,23 @@ BEGIN
 					(OTHERS => '0');
 
 	data_rd_o	<= rdata_w WHEN (MemRead_ctrl_i = '1') ELSE (OTHERS => '0');
+
+	--=======================================
+	-- BTIFG edge detector : level -> one-MCLK-cycle pulse
+	--=======================================
+	-- See the header for why a single register with no synchronizer is
+	-- enough here, why the edge is caught on the rising edge of clk_i, and
+	-- for the BTCMPR0 >= 1 limitation this implies.
+	EDGE_DET:
+	process (clk_i, rst_i)
+	begin
+		if rst_i = '1' then
+			btifg_q	<= '0';
+		elsif rising_edge(clk_i) then
+			btifg_q	<= btifg_i;
+		end if;
+	end process;
+
+	bt_irq_o	<= btifg_i AND (NOT btifg_q);
 
 END rtl;
