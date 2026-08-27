@@ -75,6 +75,16 @@ ENTITY MCU IS
 		HEX5_o				:OUT	STD_LOGIC_VECTOR(6 DOWNTO 0);
 
 		--=====================================================================
+		-- Basic Timer pins (Fig.7, clause 6). The board has no dedicated
+		-- pushbutton-style pins for these, so they go on the 2x20 expansion
+		-- header of clause 4 - the same header CAPISEL's internal VCC/GND
+		-- test sources exist to let a design skip until wired up.
+		--=====================================================================
+		PWMout_o			:OUT	STD_LOGIC;	-- Basic Timer PWM output
+		CAPIN1_i			:IN		STD_LOGIC;	-- Basic Timer capture input 1
+		CAPIN2_i			:IN		STD_LOGIC;	-- Basic Timer capture input 2
+
+		--=====================================================================
 		-- Observation outputs, for verification and for FPGA validation.
 		--
 		-- Multiplying each width by SIGTAP is what clause 7 asks for: with
@@ -200,10 +210,9 @@ ARCHITECTURE structure OF MCU IS
 	SIGNAL rd_hex4_5_w		: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
 	SIGNAL rd_sw_w			: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
 
-	-- Clause 6 chip selects, from PERIPH_AddressDecoder. Only cs_pb_w has a
-	-- consumer in this step; the other five are real signals rather than
-	-- OPEN so the port map below does not have to change again when
-	-- BT_Interface and InterruptController are wired up next.
+	-- Clause 6 chip selects, from PERIPH_AddressDecoder. cs_pb_w and the four
+	-- Basic Timer selects now have consumers; cs_ic_w is still a real signal
+	-- rather than OPEN, waiting for InterruptController.
 	SIGNAL cs_pb_w			: STD_LOGIC;
 	SIGNAL cs_btctl_w		: STD_LOGIC;
 	SIGNAL cs_btcmpr0_w		: STD_LOGIC;
@@ -219,8 +228,24 @@ ARCHITECTURE structure OF MCU IS
 	SIGNAL key2_irq_w		: STD_LOGIC;
 	SIGNAL key3_irq_w		: STD_LOGIC;
 
+	-- Basic Timer registers (BTIF) and the timer core (BT) they front.
+	-- btcnt_w and bt_irq_w have no consumer yet, exactly like key1_irq_w..
+	-- key3_irq_w above: btcnt_w until something needs to read the raw count,
+	-- bt_irq_w until the interrupt controller lands.
+	SIGNAL btctl1_w			: STD_LOGIC_VECTOR(7 DOWNTO 0);
+	SIGNAL btctl2_w			: STD_LOGIC_VECTOR(7 DOWNTO 0);
+	SIGNAL btcmpr0_w		: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+	SIGNAL btcmpr1_w		: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+	SIGNAL btcapr_w			: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+	SIGNAL btcnt_w			: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+	SIGNAL btifg_w			: STD_LOGIC;
+	SIGNAL bt_irq_w			: STD_LOGIC;
+	SIGNAL rd_bt_w			: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+	SIGNAL oe_bt_w			: STD_LOGIC;
+
 	-- The shared I/O read bus of Figure 5. Every port reaches it through a
-	-- BidirPin, so this signal genuinely has six drivers and relies on
+	-- BidirPin, so this signal genuinely has eight drivers (LEDR, the three
+	-- HEX pairs, SW, PB, the Basic Timer group and BUF_NONE) and relies on
 	-- std_logic resolution; it must not be assigned anywhere else.
 	SIGNAL io_bus_w			: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
 
@@ -615,6 +640,68 @@ BEGIN
 		key3_irq_o			=> key3_irq_w
 	);
 
+	-- The Basic Timer's memory-mapped register file. One chip select per
+	-- register out of IODEC6 above, already declared and already wired to
+	-- the decoder - they simply had no consumer until now. sel_i is bit 0 of
+	-- the byte address, exactly as the HEX pairs use it, because BTCTL1 and
+	-- BTCTL2 are the same kind of adjacent-byte-address pair.
+	--
+	-- rst_i is rst_w, the internal resolved reset, never the raw rst_i port -
+	-- same reason as every other clocked port in this file.
+	BTIF: basic_timer_interface
+	generic map(
+		DATA_BUS_WIDTH		=> DATA_BUS_WIDTH
+	)
+	PORT MAP (
+		--Inputs
+		clk_i				=> mclk_w,
+		rst_i				=> rst_w,
+		cs_btctl_i			=> cs_btctl_w,
+		cs_btcmpr0_i		=> cs_btcmpr0_w,
+		cs_btcmpr1_i		=> cs_btcmpr1_w,
+		cs_btcapr_i			=> cs_btcapr_w,
+		sel_i				=> bus_addr_w(0),
+		MemRead_ctrl_i		=> bus_read_w,
+		MemWrite_ctrl_i		=> bus_write_w,
+		data_wr_i			=> bus_wdata_w,
+		btcapr_i			=> btcapr_w,
+		btifg_i				=> btifg_w,
+
+		--Outputs
+		data_rd_o			=> rd_bt_w,
+		bt_irq_o			=> bt_irq_w,
+		btctl1_o			=> btctl1_w,
+		btctl2_o			=> btctl2_w,
+		btcmpr0_o			=> btcmpr0_w,
+		btcmpr1_o			=> btcmpr1_w
+	);
+
+	-- The Basic Timer itself (Fig.7). Runs on smclk_w, which Part 2's clock
+	-- change made a synchronous branch of mclk_w - see the note at smclk_w's
+	-- declaration - so BTIF and BT share one clock domain in every sense that
+	-- matters for the register writes and the btifg_i edge detector above.
+	BT: basic_timer
+	generic map(
+		N					=> DATA_BUS_WIDTH
+	)
+	PORT MAP (
+		--Inputs
+		smclk_i				=> smclk_w,
+		rst_i				=> rst_w,
+		btctl1_i			=> btctl1_w,
+		btctl2_i			=> btctl2_w,
+		btcmpr0_i			=> btcmpr0_w,
+		btcmpr1_i			=> btcmpr1_w,
+		capin1_i			=> CAPIN1_i,
+		capin2_i			=> CAPIN2_i,
+
+		--Outputs
+		pwmout_o			=> PWMout_o,
+		btifg_o				=> btifg_w,
+		btcapr_o			=> btcapr_w,
+		btcnt_o				=> btcnt_w
+	);
+
 	--=======================================
 	-- The shared I/O bus - the tri-state buffers of Figure 5
 	--=======================================
@@ -639,18 +726,26 @@ BEGIN
 	oe_sw_w		<= cs_sw_w		AND bus_read_w;
 	oe_pb_w		<= cs_pb_w		AND bus_read_w;
 
+	-- One output enable for the whole Basic Timer register group: the four
+	-- chip selects are already mutually exclusive out of PERIPH_AddressDecoder,
+	-- so ORing them here and driving one BidirPin is exactly the shared
+	-- chip-select grouping that decoder was designed to allow, matching how
+	-- one instance already serves both BTCTL1 and BTCTL2 inside BTIF.
+	oe_bt_w		<= (cs_btctl_w OR cs_btcmpr0_w OR cs_btcmpr1_w OR cs_btcapr_w) AND bus_read_w;
+
 	-- A bus with every buffer released floats at 'Z', and 'Z' propagated into
 	-- the register file would show up as red in the wave window and as
 	-- metavalue warnings rather than as data. BUF_NONE parks the bus at zero
 	-- whenever no device is driving it, which also gives the reads-as-zero
-	-- behaviour that unmapped I/O addresses need. 0x2014 is now PORT_PB and
-	-- is no longer one of them; 0x2018-0x201B (USART, bonus, not part of this
-	-- design) and everything from 0x201C up stay unmapped for now, reserved
-	-- for the rest of clause 6.
+	-- behaviour that unmapped I/O addresses need. 0x2014 through 0x2028 are
+	-- now all mapped (PORT_PB, then the Basic Timer register group); only
+	-- 0x2018-0x201B (USART, bonus, not part of this design) and 0x202C-0x202E
+	-- (the interrupt controller, not yet instantiated) remain unmapped.
 	--
-	-- oe_pb_w has to appear in this NOR: leaving it out would let BUF_NONE and
-	-- BUF_PB both drive io_bus_w during a load from 0x2014, resolving to 'X'.
-	oe_none_w	<= NOT (oe_ledr_w OR oe_hex0_1_w OR oe_hex2_3_w OR oe_hex4_5_w OR oe_sw_w OR oe_pb_w);
+	-- oe_pb_w and oe_bt_w both have to appear in this NOR: leaving either out
+	-- would let BUF_NONE and that port's buffer both drive io_bus_w during a
+	-- load from its address range, resolving to 'X'.
+	oe_none_w	<= NOT (oe_ledr_w OR oe_hex0_1_w OR oe_hex2_3_w OR oe_hex4_5_w OR oe_sw_w OR oe_pb_w OR oe_bt_w);
 
 	BUF_LEDR: BidirPin
 	generic map(width => DATA_BUS_WIDTH)
@@ -675,6 +770,10 @@ BEGIN
 	BUF_PB: BidirPin
 	generic map(width => DATA_BUS_WIDTH)
 	PORT MAP (Dout => rd_pb_w,		en => oe_pb_w,		Din => OPEN, IOpin => io_bus_w);
+
+	BUF_BT: BidirPin
+	generic map(width => DATA_BUS_WIDTH)
+	PORT MAP (Dout => rd_bt_w,		en => oe_bt_w,		Din => OPEN, IOpin => io_bus_w);
 
 	io_park_w	<= (OTHERS => '0');
 

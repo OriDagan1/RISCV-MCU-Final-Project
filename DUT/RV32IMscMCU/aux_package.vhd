@@ -45,6 +45,11 @@ package aux_package is
 			HEX4_o						:OUT	STD_LOGIC_VECTOR(6 DOWNTO 0);
 			HEX5_o						:OUT	STD_LOGIC_VECTOR(6 DOWNTO 0);
 
+			--Basic Timer pins (Fig.7), on the clause 4 expansion header
+			PWMout_o					:OUT	STD_LOGIC;
+			CAPIN1_i					:IN		STD_LOGIC;
+			CAPIN2_i					:IN		STD_LOGIC;
+
 			--Outputs for verification and FPGA validation. Null ranges when
 			--SIGTAP=0, so they cost no pins - see the note in MCU.vhd.
 			pc_o							:OUT	STD_LOGIC_VECTOR(PC_WIDTH*SIGTAP-1 DOWNTO 0);
@@ -420,9 +425,9 @@ package aux_package is
 		);
 	END COMPONENT;
 ---------------------------------------------------------
--- Basic Timer (Fig.7). Declared here so MCU.vhd can instantiate it once the
--- memory-mapped wrapper is added; the timer itself has no bus interface on
--- purpose, see the header of BASIC_TIMER.vhd.
+-- Basic Timer (Fig.7). The timer itself has no bus interface on purpose, see
+-- the header of BASIC_TIMER.vhd - basic_timer_interface below is the
+-- memory-mapped wrapper MCU.vhd instantiates alongside it.
 	COMPONENT basic_timer IS
 		generic(
 			N : positive := 32
@@ -449,6 +454,42 @@ package aux_package is
 			btifg_o		: OUT	STD_LOGIC;
 			btcapr_o	: OUT	STD_LOGIC_VECTOR(N-1 DOWNTO 0);
 			btcnt_o		: OUT	STD_LOGIC_VECTOR(N-1 DOWNTO 0)
+		);
+	END COMPONENT;
+---------------------------------------------------------
+	COMPONENT basic_timer_interface IS
+		generic(
+			DATA_BUS_WIDTH		: integer := 32;
+			N					: positive := 32;
+			CTL_WIDTH			: integer := 8
+		);
+		PORT(
+			--Inputs
+			clk_i				: IN	STD_LOGIC;
+			rst_i				: IN	STD_LOGIC;
+
+			cs_btctl_i			: IN	STD_LOGIC;
+			cs_btcmpr0_i		: IN	STD_LOGIC;
+			cs_btcmpr1_i		: IN	STD_LOGIC;
+			cs_btcapr_i			: IN	STD_LOGIC;
+
+			sel_i				: IN	STD_LOGIC;
+
+			MemRead_ctrl_i		: IN	STD_LOGIC;
+			MemWrite_ctrl_i		: IN	STD_LOGIC;
+			data_wr_i			: IN	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+
+			btcapr_i			: IN	STD_LOGIC_VECTOR(N-1 DOWNTO 0);
+			btifg_i				: IN	STD_LOGIC;
+
+			--Outputs
+			data_rd_o			: OUT	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+			bt_irq_o			: OUT	STD_LOGIC;
+
+			btctl1_o			: OUT	STD_LOGIC_VECTOR(CTL_WIDTH-1 DOWNTO 0);
+			btctl2_o			: OUT	STD_LOGIC_VECTOR(CTL_WIDTH-1 DOWNTO 0);
+			btcmpr0_o			: OUT	STD_LOGIC_VECTOR(N-1 DOWNTO 0);
+			btcmpr1_o			: OUT	STD_LOGIC_VECTOR(N-1 DOWNTO 0)
 		);
 	END COMPONENT;
 

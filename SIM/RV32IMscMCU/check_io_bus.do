@@ -117,6 +117,39 @@ bus 10000000011000 00000000000000000000000000000000 0 1
 chk "oe_none_w" /tb_RV32I/CORE/oe_none_w  bin 1
 chk "rdata    " /tb_RV32I/CORE/bus_rdata_w hex 00000000
 
+echo "-- store 0xA5 to BTCTL1 0x201C, read it back"
+bus 10000000011100 00000000000000000000000010100101 1 0
+bus 10000000011100 00000000000000000000000000000000 0 1
+chk "oe_bt_w  " /tb_RV32I/CORE/oe_bt_w    bin 1
+chk "oe_none_w" /tb_RV32I/CORE/oe_none_w  bin 0
+chk "rdata    " /tb_RV32I/CORE/bus_rdata_w hex 000000a5
+
+echo "-- store 0xF3 to BTCTL2 0x201D - bits 7:4 are reserved, read back masked to 0x03"
+bus 10000000011101 00000000000000000000000011110011 1 0
+bus 10000000011101 00000000000000000000000000000000 0 1
+chk "rdata    " /tb_RV32I/CORE/bus_rdata_w hex 00000003
+
+echo "-- store 0x12345678 to BTCMPR0 0x2020, read it back"
+bus 10000000100000 00010010001101000101011001111000 1 0
+bus 10000000100000 00000000000000000000000000000000 0 1
+chk "rdata    " /tb_RV32I/CORE/bus_rdata_w hex 12345678
+
+echo "-- store 0x0000ABCD to BTCMPR1 0x2024, read it back"
+bus 10000000100100 00000000000000001010101111001101 1 0
+bus 10000000100100 00000000000000000000000000000000 0 1
+chk "rdata    " /tb_RV32I/CORE/bus_rdata_w hex 0000abcd
+
+echo "-- load BTCAPR 0x2028 - read only, no capture triggered since reset, still 0"
+bus 10000000101000 00000000000000000000000000000000 0 1
+chk "oe_bt_w  " /tb_RV32I/CORE/oe_bt_w    bin 1
+chk "oe_none_w" /tb_RV32I/CORE/oe_none_w  bin 0
+chk "rdata    " /tb_RV32I/CORE/bus_rdata_w hex 00000000
+
+echo "-- load 0x202C - interrupt controller not yet instantiated, BUF_NONE answers"
+bus 10000000101100 00000000000000000000000000000000 0 1
+chk "oe_none_w" /tb_RV32I/CORE/oe_none_w  bin 1
+chk "rdata    " /tb_RV32I/CORE/bus_rdata_w hex 00000000
+
 echo "-- store 0xFF to DTCM 0x0000 then load it back - I/O must not intercept"
 bus 00000000000000 00000000000000000000000011111111 1 0
 bus 00000000000000 00000000000000000000000000000000 0 1
@@ -125,7 +158,7 @@ chk "LEDR_o   " /tb_RV32I/LEDR_o binary 10100101
 
 echo "================================================="
 if {$ERRS == 0} {
-	echo " I/O BUS CHECK PASSED - 20 checks, io_bus_w never X, Z or U"
+	echo " I/O BUS CHECK PASSED - 31 checks, io_bus_w never X, Z or U"
 } else {
 	echo " I/O BUS CHECK FAILED : $ERRS errors"
 }

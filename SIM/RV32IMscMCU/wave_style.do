@@ -27,7 +27,10 @@
 #   Coral          PORT_HEX4 / HEX5
 #   Cyan           PORT_SW        the only clause-5 input device
 #   DodgerBlue     PORT_PB        the first clause-6 device, KEY3..KEY1
+#   MediumOrchid   Basic Timer    BTIF chip selects, oe_bt_w, its four bus
+#                  registers, btcnt_w and btifg_w, and PWMout_o
 #   Tomato family  the three PORT_PB interrupt request pulses
+#   MediumPurple   bt_irq_w, the Basic Timer's edge-detected pulse
 #   Salmon         BUF_NONE, the buffer that parks the bus when idle
 #   Yellow         io_bus_w, the shared tri-state bus of Figure 5
 #
@@ -91,6 +94,7 @@ proc wave_mcu_io {mode} {
 	set C_HEX45 Coral
 	set C_SW    Cyan
 	set C_PB    DodgerBlue
+	set C_BT    MediumOrchid
 	set C_NONE  Salmon
 	set C_BUS   Yellow
 
@@ -123,6 +127,10 @@ proc wave_mcu_io {mode} {
 	w $C_HEX45 /tb_RV32I/CORE/cs_hex4_5_w
 	w $C_SW    /tb_RV32I/CORE/cs_sw_w
 	w $C_PB    /tb_RV32I/CORE/cs_pb_w
+	w $C_BT    /tb_RV32I/CORE/cs_btctl_w
+	w $C_BT    /tb_RV32I/CORE/cs_btcmpr0_w
+	w $C_BT    /tb_RV32I/CORE/cs_btcmpr1_w
+	w $C_BT    /tb_RV32I/CORE/cs_btcapr_w
 
 	wdiv $C_BUS {BIDIRPIN ENABLES AND THE SHARED BUS}
 	w $C_LEDR  /tb_RV32I/CORE/oe_ledr_w
@@ -131,12 +139,24 @@ proc wave_mcu_io {mode} {
 	w $C_HEX45 /tb_RV32I/CORE/oe_hex4_5_w
 	w $C_SW    /tb_RV32I/CORE/oe_sw_w
 	w $C_PB    /tb_RV32I/CORE/oe_pb_w
+	w $C_BT    /tb_RV32I/CORE/oe_bt_w
 	w $C_NONE  /tb_RV32I/CORE/oe_none_w
 	w $C_BUS   /tb_RV32I/CORE/io_bus_w hex
 
+	# The four registers BTIF exposes to the bus, plus btcnt_w (not bus
+	# addressable, but the running count that makes the others meaningful).
+	wdiv $C_BT {BASIC TIMER REGISTERS}
+	w $C_BT    /tb_RV32I/CORE/btctl1_w  hex
+	w $C_BT    /tb_RV32I/CORE/btctl2_w  hex
+	w $C_BT    /tb_RV32I/CORE/btcmpr0_w hex
+	w $C_BT    /tb_RV32I/CORE/btcmpr1_w hex
+	w $C_BT    /tb_RV32I/CORE/btcapr_w  hex
+	w $C_BT    /tb_RV32I/CORE/btcnt_w   hex
+
 	wdiv $C_SW {PINS}
-	w $C_SW    /tb_RV32I/SW_i   hex
-	w $C_PB    /tb_RV32I/KEY_i  binary
+	w $C_SW    /tb_RV32I/SW_i     hex
+	w $C_PB    /tb_RV32I/KEY_i    binary
+	w $C_BT    /tb_RV32I/PWMout_o
 	w $C_LEDR  /tb_RV32I/LEDR_o binary
 	# Low digit saturated, high digit lighter, so the two halves of a pair
 	# stay apart even though one instance and one chip select drive both.
@@ -147,12 +167,15 @@ proc wave_mcu_io {mode} {
 	w Coral    /tb_RV32I/HEX4_o binary
 	w #FFA694  /tb_RV32I/HEX5_o binary
 
-	# No consumer yet - see the note at IOPB in MCU.vhd - but observable here
-	# so a key release is visible the instant PORT_PB drives it.
+	# No consumer yet - see the notes at IOPB and BTIF in MCU.vhd - but
+	# observable here so a key release or a timer event is visible the
+	# instant its port drives it.
 	wdiv Tomato {INTERRUPT SOURCES}
 	w Tomato    /tb_RV32I/CORE/key1_irq_w
 	w OrangeRed /tb_RV32I/CORE/key2_irq_w
 	w Crimson   /tb_RV32I/CORE/key3_irq_w
+	w $C_BT     /tb_RV32I/CORE/btifg_w
+	w MediumPurple /tb_RV32I/CORE/bt_irq_w
 }
 
 #-----------------------------------------------------------------------------

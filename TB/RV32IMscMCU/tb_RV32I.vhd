@@ -71,6 +71,13 @@ ARCHITECTURE struct OF tb_RV32I IS
 	-- so KEY_i is held constant - pushbutton behaviour is covered by
 	-- tb_GPIO_PB_Interface.vhd, not here.
 	SIGNAL KEY_i							: STD_LOGIC_VECTOR(3 DOWNTO 1) := "111";
+	-- No benchmark touches the Basic Timer capture pins either, so they are
+	-- held low and only observed through btcapr/BTIFG via the register
+	-- file - basic_timer_interface's own testbench and tb_basic_timer.vhd
+	-- exercise the capture path.
+	SIGNAL CAPIN1_i							: STD_LOGIC := '0';
+	SIGNAL CAPIN2_i							: STD_LOGIC := '0';
+	SIGNAL PWMout_o							: STD_LOGIC;
 	SIGNAL LEDR_o							: STD_LOGIC_VECTOR(7 DOWNTO 0);
 	SIGNAL HEX0_o							: STD_LOGIC_VECTOR(6 DOWNTO 0);
 	SIGNAL HEX1_o							: STD_LOGIC_VECTOR(6 DOWNTO 0);
@@ -104,9 +111,12 @@ BEGIN
 		clk_i           	=> clk_i,
 		SW_i							=> SW_i,							-- PORT_SW  0x2010
 		KEY_i							=> KEY_i,							-- PORT_PB 0x2014
+		CAPIN1_i					=> CAPIN1_i,					-- Basic Timer capture input 1
+		CAPIN2_i					=> CAPIN2_i,					-- Basic Timer capture input 2
 
 		--Memory-mapped I/O pins
 		LEDR_o						=> LEDR_o,						-- PORT_LEDR 0x2000
+		PWMout_o					=> PWMout_o,					-- Basic Timer PWM output
 		HEX0_o						=> HEX0_o,						-- 0x2004
 		HEX1_o						=> HEX1_o,						-- 0x2005
 		HEX2_o						=> HEX2_o,						-- 0x2008
