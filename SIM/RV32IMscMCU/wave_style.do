@@ -182,14 +182,17 @@ proc wave_mcu_io {mode} {
 	w $C_BT     /tb_RV32I/CORE/btifg_w
 	w MediumPurple /tb_RV32I/CORE/bt_irq_w
 
-	# gie_w and inta_n_w are tied off in MCU.vhd until the CPU protocol
-	# exists - see the note at INTC there - so intr_w never rises yet. The
-	# internal state (ie_q, irq_q, ifg_w, type_w) is what will matter most
-	# once it does, so it is wired up here ahead of that task.
+	# gie_w and inta_n_w are the real loop as of step 4 of the CPU protocol -
+	# CORE's gie_o and inta_n_o, wired into INTC's gie_i and inta_n_i in
+	# MCU.vhd - so intr_w can now genuinely rise once software sets gp[0].
+	# int_state_q is CONTROL's own three-state machine (S_IDLE, S_CYCLE1,
+	# S_CYCLE2): grouped here rather than under CPU above because it only
+	# means anything alongside intr_w, gie_w and inta_n_w.
 	wdiv $C_IC {INTERRUPT CONTROLLER}
 	w $C_IC    /tb_RV32I/CORE/intr_w
 	w $C_IC    /tb_RV32I/CORE/gie_w
 	w $C_IC    /tb_RV32I/CORE/inta_n_w
+	w $C_IC    /tb_RV32I/CORE/CPU/CTL/int_state_q
 	w $C_IC    /tb_RV32I/CORE/INTC/ie_q   binary
 	w $C_IC    /tb_RV32I/CORE/INTC/irq_q  binary
 	w $C_IC    /tb_RV32I/CORE/INTC/ifg_w  binary

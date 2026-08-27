@@ -33,14 +33,15 @@ ENTITY RV32I_CORE IS
 		mclk_i				:IN	STD_LOGIC;	-- CPU clock
 		divclk_i			:IN	STD_LOGIC;	-- accelerator clock, faster than mclk
 
-		-- Step 3 of 4 of the interrupt service protocol (clause 6.v, page
-		-- 15). A default of '0' is required, not just convenient: MCU.vhd's
-		-- CPU instantiation is step 4's job and does not mention this port,
-		-- so it stays unassociated until then. Without a default that would
-		-- be an unconnected input with no source and an elaboration error;
-		-- with it, MCU.vhd elaborates exactly as it does today and intr_i
-		-- reads '0', so int_state_q inside CONTROL can never leave S_IDLE.
-		intr_i				:IN	STD_LOGIC := '0';	-- from the interrupt controller
+		-- Interrupt service protocol (clause 6.v, page 15). No default: step
+		-- 3 gave this port ':= '0'' so MCU.vhd's then-unmodified instantiation
+		-- would still elaborate with the port left unassociated. MCU.vhd
+		-- connects it for real as of step 4, and the default would now only
+		-- hide a forgotten connection - silently, since a defaulted input
+		-- left out of a port map compiles and elaborates clean either way.
+		-- The tools should refuse to build this design if intr_i is ever
+		-- unconnected again.
+		intr_i				:IN	STD_LOGIC;	-- from the interrupt controller
 
 		--Data bus, master side. The core drives a byte address over the whole
 		--data address space of Figure 2 and does not know what answers it:
@@ -69,9 +70,7 @@ ENTITY RV32I_CORE IS
 		mclk_cnt_o			:OUT	STD_LOGIC_VECTOR(CLK_CNT_WIDTH-1 DOWNTO 0);
 
 		--Outputs, interrupt service protocol (clause 6.v, page 15). MCU.vhd
-		--does not connect these yet - that is step 4 - so they are simply
-		--unconnected at the top level for now, which is legal and silent for
-		--an OUT port left out of a port map.
+		--connects both, closing the loop into int_ctrl's gie_i and inta_n_i.
 		inta_n_o			:OUT	STD_LOGIC;	-- ACTIVE LOW, idles at '1'
 		gie_o				:OUT	STD_LOGIC	-- gp_o(0) from IDECODE
 	);

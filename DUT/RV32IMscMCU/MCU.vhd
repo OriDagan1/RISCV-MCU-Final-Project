@@ -408,6 +408,13 @@ BEGIN
 		rst_i				=> rst_w,
 		mclk_i				=> mclk_w,
 		divclk_i			=> divclk_w,
+
+		-- The interrupt service protocol (clause 6.v, page 15), closing the
+		-- loop through INTC below: intr_w is INTC's own intr_o, and gie_w /
+		-- inta_n_w are no longer tied off - they are simply this port's
+		-- outputs, read back into INTC's gie_i / inta_n_i further down.
+		intr_i				=> intr_w,
+
 		dtcm_data_rd_i		=> bus_rdata_w,
 
 		--Data bus, master side
@@ -429,7 +436,11 @@ BEGIN
 		write_data_o		=> write_data_w,
 		alu_res_o			=> alu_res_w,
 		brTaken_o			=> brTaken_o,
-		mclk_cnt_o			=> mclk_cnt_w
+		mclk_cnt_o			=> mclk_cnt_w,
+
+		--Interrupt service protocol (clause 6.v, page 15)
+		inta_n_o			=> inta_n_w,
+		gie_o				=> gie_w
 	);
 
 	--=======================================
@@ -761,18 +772,19 @@ BEGIN
 		intr_o				=> intr_w
 	);
 
-	-- gie_i and inta_n_i are CPU-side handshake signals, and the CPU side of
-	-- this protocol does not exist yet - RV32I_CORE.vhd has no interrupt
-	-- ports and CONTROL.VHD is still purely combinational. That is the next
-	-- task. Tied off here, this is safe and behaviourally inert: with gie_i
-	-- low, intr_o can never rise (intr_o <= gie_i WHEN ifg_w /= 0 ELSE '0'
-	-- in int_ctrl), and with inta_n_i held high the controller never sees
-	-- cycle1_w = '1' and so never enters a service cycle. bus_drive_o
-	-- therefore reduces to int_ctrl's ordinary rd_w term, cs_i AND
-	-- MemRead_ctrl_i, and the whole design behaves exactly as it did before
-	-- this file existed.
-	gie_w		<= '0';
-	inta_n_w	<= '1';
+	-- gie_i and inta_n_i are CPU-side handshake signals, and as of step 4 the
+	-- loop through the CPU is real: gie_w and inta_n_w are driven by CORE's
+	-- gie_o and inta_n_o above (see the CPU instantiation), not tied off.
+	-- INTR can genuinely rise now, and the service machine in CONTROL.VHD can
+	-- genuinely be entered.
+	--
+	-- What still holds every interrupt off by default is the register file,
+	-- not this wiring: RF_q resets to all zero (IDECODE.VHD), so gp[0] - GIE
+	-- - is '0' out of reset, and intr_o <= gie_i WHEN ifg_w /= 0 ELSE '0' in
+	-- int_ctrl means INTR cannot rise until software explicitly stores a '1'
+	-- into gp[0]. No existing benchmark or GPIO application does that, so
+	-- every one of them keeps running exactly as before - not because the
+	-- protocol is inert, but because nothing has asked for it yet.
 
 	--=======================================
 	-- The shared I/O bus - the tri-state buffers of Figure 5

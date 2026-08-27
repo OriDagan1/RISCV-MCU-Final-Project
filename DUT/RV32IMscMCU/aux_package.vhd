@@ -96,12 +96,12 @@ package aux_package is
 			mclk_i						:IN	STD_LOGIC;
 			divclk_i					:IN	STD_LOGIC;
 
-			-- Step 3 of 4 of the interrupt service protocol (clause 6.v,
-			-- page 15). The default MUST be repeated here: MCU.vhd's CPU
-			-- instantiation resolves through this component declaration, not
-			-- the entity directly, so an unassociated intr_i takes ITS
-			-- default from whichever one is in force at elaboration.
-			intr_i						:IN	STD_LOGIC := '0';
+			-- Interrupt service protocol (clause 6.v, page 15). No default,
+			-- mirroring the entity: MCU.vhd's CPU instantiation resolves
+			-- through this component declaration, not the entity directly,
+			-- so a default here would just as effectively hide a forgotten
+			-- connection as one on the entity would.
+			intr_i						:IN	STD_LOGIC;
 
 			--Data bus, master side
 			dtcm_data_rd_i		:IN 	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
