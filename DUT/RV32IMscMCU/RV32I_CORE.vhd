@@ -159,11 +159,24 @@ BEGIN
 		RegDst_ctrl_i		=> reg_dst_w,
 		RegWrite_ctrl_i 	=> reg_write_gated_w,
 		MemtoReg_ctrl_i 	=> MemtoReg_w,
-		
+
+		-- Step 1 of 4 of the interrupt service protocol (clause 6.v, page 15):
+		-- this port exists but is tied inactive. The service state machine
+		-- that drives it lands in step 3, in this same entity; until then
+		-- int_rf_we_i='0' makes the hardware write port dead logic by
+		-- construction, and IDECODE's ordinary write-back path is unchanged.
+		int_rf_we_i			=> '0',
+		int_rf_rd_i			=> (OTHERS => '0'),
+		int_rf_data_i		=> (OTHERS => '0'),
+
 		--Outputs
 		read_data1_o 		=> read_data1_w,
 		read_data2_o 		=> read_data2_w,
-		SignExt_o 			=> sign_extend_w	 
+		SignExt_o 			=> sign_extend_w,
+
+		-- Left open until RV32I_CORE gains its own gie_o port in step 4; the
+		-- interrupt controller cannot reach this signal before then.
+		gp_o				=> OPEN
 	);
 	--=======================================
 	-- CONTROL module connection

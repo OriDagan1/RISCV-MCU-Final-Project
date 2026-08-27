@@ -27,11 +27,26 @@ ENTITY Idecode IS
 		RegDst_ctrl_i 	: IN 	STD_LOGIC;
 		RegWrite_ctrl_i : IN 	STD_LOGIC;
 		MemtoReg_ctrl_i : IN 	STD_LOGIC;
-		
+
+		--Inputs, hardware write port for the interrupt service protocol of
+		--clause 6.v, page 15. GIE lives in gp[0] (x3) and the interrupt
+		--return address is stored in tp (x4); the service state machine
+		--writes both outside the normal instruction write-back path, because
+		--during the protocol the CPU is not executing an instruction at all.
+		int_rf_we_i			: IN	STD_LOGIC;										-- overrides the instruction write-back
+		int_rf_rd_i			: IN	STD_LOGIC_VECTOR(4 DOWNTO 0);					-- destination register number
+		int_rf_data_i		: IN	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);	-- value to write
+
 		--Outputs
 		read_data1_o		: OUT	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
 		read_data2_o		: OUT STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
-		SignExt_o 			: OUT STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0)		 
+		SignExt_o 			: OUT STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+
+		-- Continuous read of x3 (gp), whose bit 0 is GIE. INT_CTRL.vhd needs
+		-- it every cycle for INTR = GIE AND OR(IFG), not only when an
+		-- instruction happens to select x3 through rs1/rs2, so it bypasses
+		-- the read multiplexers entirely rather than being a third one.
+		gp_o				: OUT	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0)
 	);
 END Idecode;
 
@@ -75,8 +90,15 @@ BEGIN
 	-- Read the Register 1 output of the Register-File
 	read_data1_o <= RF_q(CONV_INTEGER(rs1_w));
 	
-	-- Read the Register 2 output of the Register-File		 
+	-- Read the Register 2 output of the Register-File
 	read_data2_o <= RF_q(CONV_INTEGER(rs2_w));
+
+	-- gp (x3), continuously, for the interrupt controller's GIE bit - not an
+	-- instruction-selected read, so it does not go through rs1_w/rs2_w. After
+	-- reset the register file is all zero, so gp_o is zero and GIE is '0':
+	-- interrupts are impossible until software explicitly sets GIE, which is
+	-- exactly why every benchmark that predates this port is unaffected.
+	gp_o <= RF_q(3);
 	
 	-- Mux to bypass data memory for Rformat instructions
 	write_data_w <= ZEROS_DBUS2PCADDR & pc_plus4_i				WHEN	RegDst_ctrl_i				ELSE
@@ -120,7 +142,15 @@ BEGIN
 				RF_q(i) <= CONV_STD_LOGIC_VECTOR(0,32);
 			END LOOP;
 		elsif (clk_i'event and clk_i='1') then
-			if (RegWrite_ctrl_i = '1' AND rd_w /= 0) then	-- RF(0) hard-wired of value zero
+			-- The hardware write port overrides the instruction write-back
+			-- explicitly, rather than relying on the two never being asked
+			-- for in the same cycle. During the protocol the instruction in
+			-- flight is suppressed by the control unit (a later step in this
+			-- work), but this override does not depend on that being true:
+			-- same array, same edge, one write per cycle, hardware wins.
+			if (int_rf_we_i = '1' AND int_rf_rd_i /= 0) then	-- RF(0) hard-wired of value zero
+				RF_q(CONV_INTEGER(int_rf_rd_i)) <= int_rf_data_i;
+			elsif (RegWrite_ctrl_i = '1' AND rd_w /= 0) then	-- RF(0) hard-wired of value zero
 				RF_q(CONV_INTEGER(rd_w)) <= write_data_w;
 				-- index type is integer so we must use conv_integer for type casting
 			end if;

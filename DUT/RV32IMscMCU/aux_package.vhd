@@ -210,11 +210,16 @@ package aux_package is
 			RegDst_ctrl_i 	: IN 	STD_LOGIC;
 			RegWrite_ctrl_i : IN 	STD_LOGIC;
 			MemtoReg_ctrl_i : IN 	STD_LOGIC;
-			
+
+			int_rf_we_i			: IN	STD_LOGIC;
+			int_rf_rd_i			: IN	STD_LOGIC_VECTOR(4 DOWNTO 0);
+			int_rf_data_i		: IN	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+
 			--Outputs
 			read_data1_o		: OUT	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
 			read_data2_o		: OUT STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
-			SignExt_o 			: OUT STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0)		 
+			SignExt_o 			: OUT STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+			gp_o				: OUT	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0)
 		);
 	end component;
 ---------------------------------------------------------		
