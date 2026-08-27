@@ -25,7 +25,9 @@
 #   Gold           PORT_HEX0 / HEX1
 #   Orange         PORT_HEX2 / HEX3
 #   Coral          PORT_HEX4 / HEX5
-#   Cyan           PORT_SW        the only input device
+#   Cyan           PORT_SW        the only clause-5 input device
+#   DodgerBlue     PORT_PB        the first clause-6 device, KEY3..KEY1
+#   Tomato family  the three PORT_PB interrupt request pulses
 #   Salmon         BUF_NONE, the buffer that parks the bus when idle
 #   Yellow         io_bus_w, the shared tri-state bus of Figure 5
 #
@@ -88,6 +90,7 @@ proc wave_mcu_io {mode} {
 	set C_HEX23 Orange
 	set C_HEX45 Coral
 	set C_SW    Cyan
+	set C_PB    DodgerBlue
 	set C_NONE  Salmon
 	set C_BUS   Yellow
 
@@ -119,6 +122,7 @@ proc wave_mcu_io {mode} {
 	w $C_HEX23 /tb_RV32I/CORE/cs_hex2_3_w
 	w $C_HEX45 /tb_RV32I/CORE/cs_hex4_5_w
 	w $C_SW    /tb_RV32I/CORE/cs_sw_w
+	w $C_PB    /tb_RV32I/CORE/cs_pb_w
 
 	wdiv $C_BUS {BIDIRPIN ENABLES AND THE SHARED BUS}
 	w $C_LEDR  /tb_RV32I/CORE/oe_ledr_w
@@ -126,11 +130,13 @@ proc wave_mcu_io {mode} {
 	w $C_HEX23 /tb_RV32I/CORE/oe_hex2_3_w
 	w $C_HEX45 /tb_RV32I/CORE/oe_hex4_5_w
 	w $C_SW    /tb_RV32I/CORE/oe_sw_w
+	w $C_PB    /tb_RV32I/CORE/oe_pb_w
 	w $C_NONE  /tb_RV32I/CORE/oe_none_w
 	w $C_BUS   /tb_RV32I/CORE/io_bus_w hex
 
 	wdiv $C_SW {PINS}
 	w $C_SW    /tb_RV32I/SW_i   hex
+	w $C_PB    /tb_RV32I/KEY_i  binary
 	w $C_LEDR  /tb_RV32I/LEDR_o binary
 	# Low digit saturated, high digit lighter, so the two halves of a pair
 	# stay apart even though one instance and one chip select drive both.
@@ -140,6 +146,13 @@ proc wave_mcu_io {mode} {
 	w #FFBB70  /tb_RV32I/HEX3_o binary
 	w Coral    /tb_RV32I/HEX4_o binary
 	w #FFA694  /tb_RV32I/HEX5_o binary
+
+	# No consumer yet - see the note at IOPB in MCU.vhd - but observable here
+	# so a key release is visible the instant PORT_PB drives it.
+	wdiv Tomato {INTERRUPT SOURCES}
+	w Tomato    /tb_RV32I/CORE/key1_irq_w
+	w OrangeRed /tb_RV32I/CORE/key2_irq_w
+	w Crimson   /tb_RV32I/CORE/key3_irq_w
 }
 
 #-----------------------------------------------------------------------------

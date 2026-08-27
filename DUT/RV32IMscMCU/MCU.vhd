@@ -52,6 +52,13 @@ ENTITY MCU IS
 
 		SW_i				:IN	STD_LOGIC_VECTOR(SW_WIDTH-1 DOWNTO 0);	-- PORT_SW   0x2010
 
+		-- KEY3..KEY1, active low and already debounced in hardware (Figure 6),
+		-- so this port carries the raw pin levels: no inversion and no
+		-- debouncer belongs here - GPIO_PB_Interface expects exactly this.
+		-- KEY0 is the system reset (clause 3) and arrives as rst_i instead;
+		-- it is never part of this vector.
+		KEY_i				:IN	STD_LOGIC_VECTOR(3 DOWNTO 1);	-- PORT_PB   0x2014
+
 		--=====================================================================
 		-- Memory-mapped I/O pins (Figure 5, clause 5)
 		--   PORT_LEDR  0x2000    PORT_SW  0x2010
@@ -195,6 +202,25 @@ ARCHITECTURE structure OF MCU IS
 	SIGNAL rd_hex2_3_w		: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
 	SIGNAL rd_hex4_5_w		: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
 	SIGNAL rd_sw_w			: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+
+	-- Clause 6 chip selects, from PERIPH_AddressDecoder. Only cs_pb_w has a
+	-- consumer in this step; the other five are real signals rather than
+	-- OPEN so the port map below does not have to change again when
+	-- BT_Interface and InterruptController are wired up next.
+	SIGNAL cs_pb_w			: STD_LOGIC;
+	SIGNAL cs_btctl_w		: STD_LOGIC;
+	SIGNAL cs_btcmpr0_w		: STD_LOGIC;
+	SIGNAL cs_btcmpr1_w		: STD_LOGIC;
+	SIGNAL cs_btcapr_w		: STD_LOGIC;
+	SIGNAL cs_ic_w			: STD_LOGIC;
+
+	-- PORT_PB read path and interrupt requests. The three IRQ pulses have no
+	-- consumer until the interrupt controller lands; see the note there.
+	SIGNAL rd_pb_w			: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+	SIGNAL oe_pb_w			: STD_LOGIC;
+	SIGNAL key1_irq_w		: STD_LOGIC;
+	SIGNAL key2_irq_w		: STD_LOGIC;
+	SIGNAL key3_irq_w		: STD_LOGIC;
 
 	-- The shared I/O read bus of Figure 5. Every port reaches it through a
 	-- BidirPin, so this signal genuinely has six drivers and relies on
@@ -412,6 +438,32 @@ BEGIN
 		cs_sw_o				=> cs_sw_w
 	);
 
+	-- The two decoders partition the I/O region between them. GPIO_AddressDecoder
+	-- owns 0x2000-0x201F (device select on address bits [4:2], with [12:5]
+	-- forced to zero); PERIPH_AddressDecoder owns the clause-6 block above it,
+	-- 0x2000-0x203F of device-select space on bits [5:2] with [12:6] forced to
+	-- zero. The two sets of device-select patterns are disjoint by construction
+	-- (see the header of PERIPH_AddressDecoder.vhd), so the chip selects across
+	-- both decoders stay one-hot together and the read paths can keep being
+	-- OR-ed onto io_bus_w exactly as they are today.
+	IODEC6: PERIPH_AddressDecoder
+	generic map(
+		DA_WIDTH			=> DA_WIDTH
+	)
+	PORT MAP (
+		--Inputs
+		en_i				=> io_sel_w,
+		addr_i				=> bus_addr_w,
+
+		--Outputs
+		cs_pb_o				=> cs_pb_w,
+		cs_btctl_o			=> cs_btctl_w,
+		cs_btcmpr0_o		=> cs_btcmpr0_w,
+		cs_btcmpr1_o		=> cs_btcmpr1_w,
+		cs_btcapr_o			=> cs_btcapr_w,
+		cs_ic_o				=> cs_ic_w
+	);
+
 	IOLEDR: GPIO_LEDR_Interface
 	generic map(
 		DATA_BUS_WIDTH		=> DATA_BUS_WIDTH,
@@ -509,6 +561,35 @@ BEGIN
 		HEX_hi_o			=> HEX5_o			-- 0x200D
 	);
 
+	-- PORT_PB, the first clause-6 device. Read-only like PORT_SW - no
+	-- MemWrite_ctrl_i, no data_wr_i - but unlike PORT_SW it is clocked: it
+	-- contains the two-flop KEY synchronizer and the release edge detector,
+	-- so it needs clk_i and rst_i where GPIO_SW_Interface needs neither.
+	--
+	-- rst_i is wired to rst_w, the internal resolved reset, and must never be
+	-- the raw rst_i port. GPIO_PB_Interface resets its key-history registers
+	-- to the idle level "111"; feeding it the wrongly-polarised reset would
+	-- make the first sample after reset look like three simultaneous key
+	-- releases and fire three spurious interrupts.
+	IOPB: GPIO_PB_Interface
+	generic map(
+		DATA_BUS_WIDTH		=> DATA_BUS_WIDTH
+	)
+	PORT MAP (
+		--Inputs
+		clk_i				=> mclk_w,
+		rst_i				=> rst_w,
+		cs_i				=> cs_pb_w,
+		MemRead_ctrl_i		=> bus_read_w,
+		KEY_i				=> KEY_i,
+
+		--Outputs
+		data_rd_o			=> rd_pb_w,
+		key1_irq_o			=> key1_irq_w,
+		key2_irq_o			=> key2_irq_w,
+		key3_irq_o			=> key3_irq_w
+	);
+
 	--=======================================
 	-- The shared I/O bus - the tri-state buffers of Figure 5
 	--=======================================
@@ -531,14 +612,20 @@ BEGIN
 	oe_hex2_3_w	<= cs_hex2_3_w	AND bus_read_w;
 	oe_hex4_5_w	<= cs_hex4_5_w	AND bus_read_w;
 	oe_sw_w		<= cs_sw_w		AND bus_read_w;
+	oe_pb_w		<= cs_pb_w		AND bus_read_w;
 
 	-- A bus with every buffer released floats at 'Z', and 'Z' propagated into
 	-- the register file would show up as red in the wave window and as
 	-- metavalue warnings rather than as data. BUF_NONE parks the bus at zero
 	-- whenever no device is driving it, which also gives the reads-as-zero
-	-- behaviour that unmapped I/O addresses need - 0x2014, 0x2018, 0x201C and
-	-- everything from 0x2020 up, all reserved for the peripherals of clause 6.
-	oe_none_w	<= NOT (oe_ledr_w OR oe_hex0_1_w OR oe_hex2_3_w OR oe_hex4_5_w OR oe_sw_w);
+	-- behaviour that unmapped I/O addresses need. 0x2014 is now PORT_PB and
+	-- is no longer one of them; 0x2018-0x201B (USART, bonus, not part of this
+	-- design) and everything from 0x201C up stay unmapped for now, reserved
+	-- for the rest of clause 6.
+	--
+	-- oe_pb_w has to appear in this NOR: leaving it out would let BUF_NONE and
+	-- BUF_PB both drive io_bus_w during a load from 0x2014, resolving to 'X'.
+	oe_none_w	<= NOT (oe_ledr_w OR oe_hex0_1_w OR oe_hex2_3_w OR oe_hex4_5_w OR oe_sw_w OR oe_pb_w);
 
 	BUF_LEDR: BidirPin
 	generic map(width => DATA_BUS_WIDTH)
@@ -559,6 +646,10 @@ BEGIN
 	BUF_SW: BidirPin
 	generic map(width => DATA_BUS_WIDTH)
 	PORT MAP (Dout => rd_sw_w,		en => oe_sw_w,		Din => OPEN, IOpin => io_bus_w);
+
+	BUF_PB: BidirPin
+	generic map(width => DATA_BUS_WIDTH)
+	PORT MAP (Dout => rd_pb_w,		en => oe_pb_w,		Din => OPEN, IOpin => io_bus_w);
 
 	io_park_w	<= (OTHERS => '0');
 

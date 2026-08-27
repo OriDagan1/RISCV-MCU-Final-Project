@@ -66,6 +66,11 @@ ARCHITECTURE struct OF tb_RV32I IS
 	-- observed: this testbench exists to prove the GPIO changed nothing. The
 	-- ports themselves are verified by the five tb_GPIO_* unit testbenches.
 	SIGNAL SW_i								: STD_LOGIC_VECTOR(7 DOWNTO 0) := x"A5";
+	-- "111" is all keys released: the pushbuttons are active low and held
+	-- high by the pull-ups of Figure 6. No benchmark touches PORT_PB either,
+	-- so KEY_i is held constant - pushbutton behaviour is covered by
+	-- tb_GPIO_PB_Interface.vhd, not here.
+	SIGNAL KEY_i							: STD_LOGIC_VECTOR(3 DOWNTO 1) := "111";
 	SIGNAL LEDR_o							: STD_LOGIC_VECTOR(7 DOWNTO 0);
 	SIGNAL HEX0_o							: STD_LOGIC_VECTOR(6 DOWNTO 0);
 	SIGNAL HEX1_o							: STD_LOGIC_VECTOR(6 DOWNTO 0);
@@ -98,6 +103,7 @@ BEGIN
 		rst_i           	=> rst_i,
 		clk_i           	=> clk_i,
 		SW_i							=> SW_i,							-- PORT_SW  0x2010
+		KEY_i							=> KEY_i,							-- PORT_PB 0x2014
 
 		--Memory-mapped I/O pins
 		LEDR_o						=> LEDR_o,						-- PORT_LEDR 0x2000

@@ -38,9 +38,11 @@ foreach f [list \
 	$DUT/BidirPin.vhd                 \
 	$DUT/SevenSegmentEncoder.vhd      \
 	$DUT/GPIO_AddressDecoder.vhd      \
+	$DUT/PERIPH_AddressDecoder.vhd    \
 	$DUT/GPIO_LEDR_Interface.vhd      \
 	$DUT/GPIO_SW_Interface.vhd        \
 	$DUT/GPIO_HEX_Pair_Interface.vhd  \
+	$DUT/GPIO_PB_Interface.vhd        \
 	$DUT/BT_CLKDIV.vhd                \
 	$DUT/BTCNT.vhd                    \
 	$DUT/BT_OUTPUT_UNIT.vhd           \
@@ -59,9 +61,11 @@ foreach f [list \
 	$TB/tb_div_accel.vhd              \
 	$TB/tb_SevenSegmentEncoder.vhd    \
 	$TB/tb_GPIO_AddressDecoder.vhd    \
+	$TB/tb_PERIPH_AddressDecoder.vhd  \
 	$TB/tb_GPIO_LEDR_Interface.vhd    \
 	$TB/tb_GPIO_SW_Interface.vhd      \
 	$TB/tb_GPIO_HEX_Pair_Interface.vhd \
+	$TB/tb_GPIO_PB_Interface.vhd      \
 	$TB/tb_btcnt.vhd                  \
 	$TB/tb_basic_timer.vhd            ] {
 	echo "vcom $f"

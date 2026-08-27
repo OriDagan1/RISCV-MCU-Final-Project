@@ -106,8 +106,14 @@ echo "-- load PORT_HEX1 0x2005 - reads back the stored byte, not the segments"
 bus 10000000000101 00000000000000000000000000000000 0 1
 chk "rdata    " /tb_RV32I/CORE/bus_rdata_w hex 0000000e
 
-echo "-- load unmapped I/O 0x2014 - no buffer enabled, BUF_NONE answers"
+echo "-- load PORT_PB 0x2014 - the testbench holds KEY_i at \"111\", all released"
 bus 10000000010100 00000000000000000000000000000000 0 1
+chk "oe_pb_w  " /tb_RV32I/CORE/oe_pb_w    bin 1
+chk "oe_none_w" /tb_RV32I/CORE/oe_none_w  bin 0
+chk "rdata    " /tb_RV32I/CORE/bus_rdata_w hex 0000000e
+
+echo "-- load 0x2018 - USART bonus, deliberately undecoded, BUF_NONE answers"
+bus 10000000011000 00000000000000000000000000000000 0 1
 chk "oe_none_w" /tb_RV32I/CORE/oe_none_w  bin 1
 chk "rdata    " /tb_RV32I/CORE/bus_rdata_w hex 00000000
 
@@ -119,7 +125,7 @@ chk "LEDR_o   " /tb_RV32I/LEDR_o binary 10100101
 
 echo "================================================="
 if {$ERRS == 0} {
-	echo " I/O BUS CHECK PASSED - 18 checks, io_bus_w never X, Z or U"
+	echo " I/O BUS CHECK PASSED - 20 checks, io_bus_w never X, Z or U"
 } else {
 	echo " I/O BUS CHECK FAILED : $ERRS errors"
 }

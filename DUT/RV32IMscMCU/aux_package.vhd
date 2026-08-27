@@ -34,6 +34,8 @@ package aux_package is
 
 			SW_i							:IN	STD_LOGIC_VECTOR(SW_WIDTH-1 DOWNTO 0);
 
+			KEY_i							:IN	STD_LOGIC_VECTOR(3 DOWNTO 1);	-- PORT_PB 0x2014
+
 			--Memory-mapped I/O pins (Figure 5)
 			LEDR_o						:OUT	STD_LOGIC_VECTOR(LEDR_WIDTH-1 DOWNTO 0);
 			HEX0_o						:OUT	STD_LOGIC_VECTOR(6 DOWNTO 0);
@@ -279,6 +281,25 @@ package aux_package is
 		);
 	END COMPONENT;
 ---------------------------------------------------------
+	COMPONENT PERIPH_AddressDecoder IS
+		generic(
+			DA_WIDTH			: integer := 14
+		);
+		PORT(
+			--Inputs
+			en_i				: IN	STD_LOGIC;
+			addr_i				: IN	STD_LOGIC_VECTOR(DA_WIDTH-1 DOWNTO 0);
+
+			--Outputs, one chip select per device
+			cs_pb_o				: OUT	STD_LOGIC;
+			cs_btctl_o			: OUT	STD_LOGIC;
+			cs_btcmpr0_o		: OUT	STD_LOGIC;
+			cs_btcmpr1_o		: OUT	STD_LOGIC;
+			cs_btcapr_o			: OUT	STD_LOGIC;
+			cs_ic_o				: OUT	STD_LOGIC
+		);
+	END COMPONENT;
+---------------------------------------------------------
 	COMPONENT GPIO_LEDR_Interface IS
 		generic(
 			DATA_BUS_WIDTH		: integer := 32;
@@ -335,6 +356,28 @@ package aux_package is
 			data_rd_o			: OUT	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
 			HEX_lo_o			: OUT	STD_LOGIC_VECTOR(6 DOWNTO 0);
 			HEX_hi_o			: OUT	STD_LOGIC_VECTOR(6 DOWNTO 0)
+		);
+	END COMPONENT;
+---------------------------------------------------------
+	COMPONENT GPIO_PB_Interface IS
+		generic(
+			DATA_BUS_WIDTH		: integer := 32
+		);
+		PORT(
+			--Inputs
+			clk_i				: IN	STD_LOGIC;
+			rst_i				: IN	STD_LOGIC;
+			cs_i				: IN	STD_LOGIC;
+			MemRead_ctrl_i		: IN	STD_LOGIC;
+			KEY_i				: IN	STD_LOGIC_VECTOR(3 DOWNTO 1);
+
+			--Outputs
+			data_rd_o			: OUT	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+
+			--Interrupt requests, one per key. Single cycle pulses.
+			key1_irq_o			: OUT	STD_LOGIC;
+			key2_irq_o			: OUT	STD_LOGIC;
+			key3_irq_o			: OUT	STD_LOGIC
 		);
 	END COMPONENT;
 ---------------------------------------------------------
