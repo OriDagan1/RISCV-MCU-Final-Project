@@ -31,6 +31,8 @@
 #                  registers, btcnt_w and btifg_w, and PWMout_o
 #   Tomato family  the three PORT_PB interrupt request pulses
 #   MediumPurple   bt_irq_w, the Basic Timer's edge-detected pulse
+#   SteelBlue      the interrupt controller: cs_ic_w, oe_ic_w, intr_w,
+#                  gie_w, inta_n_w and INTC's internal IE/IFG/TYPE state
 #   Salmon         BUF_NONE, the buffer that parks the bus when idle
 #   Yellow         io_bus_w, the shared tri-state bus of Figure 5
 #
@@ -95,6 +97,7 @@ proc wave_mcu_io {mode} {
 	set C_SW    Cyan
 	set C_PB    DodgerBlue
 	set C_BT    MediumOrchid
+	set C_IC    SteelBlue
 	set C_NONE  Salmon
 	set C_BUS   Yellow
 
@@ -131,6 +134,7 @@ proc wave_mcu_io {mode} {
 	w $C_BT    /tb_RV32I/CORE/cs_btcmpr0_w
 	w $C_BT    /tb_RV32I/CORE/cs_btcmpr1_w
 	w $C_BT    /tb_RV32I/CORE/cs_btcapr_w
+	w $C_IC    /tb_RV32I/CORE/cs_ic_w
 
 	wdiv $C_BUS {BIDIRPIN ENABLES AND THE SHARED BUS}
 	w $C_LEDR  /tb_RV32I/CORE/oe_ledr_w
@@ -140,6 +144,7 @@ proc wave_mcu_io {mode} {
 	w $C_SW    /tb_RV32I/CORE/oe_sw_w
 	w $C_PB    /tb_RV32I/CORE/oe_pb_w
 	w $C_BT    /tb_RV32I/CORE/oe_bt_w
+	w $C_IC    /tb_RV32I/CORE/oe_ic_w
 	w $C_NONE  /tb_RV32I/CORE/oe_none_w
 	w $C_BUS   /tb_RV32I/CORE/io_bus_w hex
 
@@ -176,6 +181,19 @@ proc wave_mcu_io {mode} {
 	w Crimson   /tb_RV32I/CORE/key3_irq_w
 	w $C_BT     /tb_RV32I/CORE/btifg_w
 	w MediumPurple /tb_RV32I/CORE/bt_irq_w
+
+	# gie_w and inta_n_w are tied off in MCU.vhd until the CPU protocol
+	# exists - see the note at INTC there - so intr_w never rises yet. The
+	# internal state (ie_q, irq_q, ifg_w, type_w) is what will matter most
+	# once it does, so it is wired up here ahead of that task.
+	wdiv $C_IC {INTERRUPT CONTROLLER}
+	w $C_IC    /tb_RV32I/CORE/intr_w
+	w $C_IC    /tb_RV32I/CORE/gie_w
+	w $C_IC    /tb_RV32I/CORE/inta_n_w
+	w $C_IC    /tb_RV32I/CORE/INTC/ie_q   binary
+	w $C_IC    /tb_RV32I/CORE/INTC/irq_q  binary
+	w $C_IC    /tb_RV32I/CORE/INTC/ifg_w  binary
+	w $C_IC    /tb_RV32I/CORE/INTC/type_w hex
 }
 
 #-----------------------------------------------------------------------------

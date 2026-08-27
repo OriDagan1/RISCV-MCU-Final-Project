@@ -145,10 +145,48 @@ chk "oe_bt_w  " /tb_RV32I/CORE/oe_bt_w    bin 1
 chk "oe_none_w" /tb_RV32I/CORE/oe_none_w  bin 0
 chk "rdata    " /tb_RV32I/CORE/bus_rdata_w hex 00000000
 
-echo "-- load 0x202C - interrupt controller not yet instantiated, BUF_NONE answers"
+echo "-- store 0x3F to IE 0x202C, read it back"
+bus 10000000101100 00000000000000000000000000111111 1 0
 bus 10000000101100 00000000000000000000000000000000 0 1
-chk "oe_none_w" /tb_RV32I/CORE/oe_none_w  bin 1
+chk "oe_ic_w  " /tb_RV32I/CORE/oe_ic_w    bin 1
+chk "oe_none_w" /tb_RV32I/CORE/oe_none_w  bin 0
+chk "rdata    " /tb_RV32I/CORE/bus_rdata_w hex 0000003f
+
+echo "-- store 0xFF to IE 0x202C - bits 7:6 read as zero, read back masked to 0x3F"
+bus 10000000101100 00000000000000000000000011111111 1 0
+bus 10000000101100 00000000000000000000000000000000 0 1
+chk "oe_ic_w  " /tb_RV32I/CORE/oe_ic_w    bin 1
+chk "oe_none_w" /tb_RV32I/CORE/oe_none_w  bin 0
+chk "rdata    " /tb_RV32I/CORE/bus_rdata_w hex 0000003f
+
+echo "-- load IFG 0x202D - no source has fired: no key release, and this script produces none"
+bus 10000000101101 00000000000000000000000000000000 0 1
+chk "oe_ic_w  " /tb_RV32I/CORE/oe_ic_w    bin 1
+chk "oe_none_w" /tb_RV32I/CORE/oe_none_w  bin 0
 chk "rdata    " /tb_RV32I/CORE/bus_rdata_w hex 00000000
+
+echo "-- load TYPE 0x202E - 00h when nothing is pending, also the RESET vector"
+bus 10000000101110 00000000000000000000000000000000 0 1
+chk "oe_ic_w  " /tb_RV32I/CORE/oe_ic_w    bin 1
+chk "oe_none_w" /tb_RV32I/CORE/oe_none_w  bin 0
+chk "rdata    " /tb_RV32I/CORE/bus_rdata_w hex 00000000
+
+echo "-- store 0xFF to TYPE 0x202E - read only, the store must be ignored"
+bus 10000000101110 00000000000000000000000011111111 1 0
+bus 10000000101110 00000000000000000000000000000000 0 1
+chk "oe_ic_w  " /tb_RV32I/CORE/oe_ic_w    bin 1
+chk "oe_none_w" /tb_RV32I/CORE/oe_none_w  bin 0
+chk "rdata    " /tb_RV32I/CORE/bus_rdata_w hex 00000000
+
+echo "-- load 0x202F - PERIPH_AddressDecoder selects the controller here too;"
+echo "   int_ctrl returns zero itself rather than the decoder suppressing the address"
+bus 10000000101111 00000000000000000000000000000000 0 1
+chk "oe_ic_w  " /tb_RV32I/CORE/oe_ic_w    bin 1
+chk "oe_none_w" /tb_RV32I/CORE/oe_none_w  bin 0
+chk "rdata    " /tb_RV32I/CORE/bus_rdata_w hex 00000000
+
+echo "-- store 0x00 back to IE, leave state clean for whatever runs next"
+bus 10000000101100 00000000000000000000000000000000 1 0
 
 echo "-- store 0xFF to DTCM 0x0000 then load it back - I/O must not intercept"
 bus 00000000000000 00000000000000000000000011111111 1 0
@@ -158,7 +196,7 @@ chk "LEDR_o   " /tb_RV32I/LEDR_o binary 10100101
 
 echo "================================================="
 if {$ERRS == 0} {
-	echo " I/O BUS CHECK PASSED - 31 checks, io_bus_w never X, Z or U"
+	echo " I/O BUS CHECK PASSED - 47 checks, io_bus_w never X, Z or U"
 } else {
 	echo " I/O BUS CHECK FAILED : $ERRS errors"
 }

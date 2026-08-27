@@ -210,9 +210,8 @@ ARCHITECTURE structure OF MCU IS
 	SIGNAL rd_hex4_5_w		: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
 	SIGNAL rd_sw_w			: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
 
-	-- Clause 6 chip selects, from PERIPH_AddressDecoder. cs_pb_w and the four
-	-- Basic Timer selects now have consumers; cs_ic_w is still a real signal
-	-- rather than OPEN, waiting for InterruptController.
+	-- Clause 6 chip selects, from PERIPH_AddressDecoder. All six now have a
+	-- consumer: cs_pb_w, the four Basic Timer selects, and now cs_ic_w too.
 	SIGNAL cs_pb_w			: STD_LOGIC;
 	SIGNAL cs_btctl_w		: STD_LOGIC;
 	SIGNAL cs_btcmpr0_w		: STD_LOGIC;
@@ -243,10 +242,26 @@ ARCHITECTURE structure OF MCU IS
 	SIGNAL rd_bt_w			: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
 	SIGNAL oe_bt_w			: STD_LOGIC;
 
+	-- The Basic Interrupt Controller (clause 6.v). rd_ic_w/oe_ic_w follow the
+	-- read-path pattern of every other device, but oe_ic_w is NOT cs AND
+	-- MemRead here - int_ctrl computes its own bus_drive_o and this signal is
+	-- simply that port, because protocol cycle 1 has to put TYPE on the bus
+	-- without cs_i ever going high. See the read-path section below.
+	--
+	-- intr_w has no consumer yet, like bt_irq_w and the key IRQs before it:
+	-- the CPU side of the protocol is the next task. gie_w and inta_n_w come
+	-- from the CPU in that same task; tied off below in the meantime.
+	SIGNAL rd_ic_w			: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+	SIGNAL oe_ic_w			: STD_LOGIC;
+	SIGNAL intr_w			: STD_LOGIC;
+	SIGNAL gie_w			: STD_LOGIC;
+	SIGNAL inta_n_w			: STD_LOGIC;
+
 	-- The shared I/O read bus of Figure 5. Every port reaches it through a
-	-- BidirPin, so this signal genuinely has eight drivers (LEDR, the three
-	-- HEX pairs, SW, PB, the Basic Timer group and BUF_NONE) and relies on
-	-- std_logic resolution; it must not be assigned anywhere else.
+	-- BidirPin, so this signal genuinely has nine drivers (LEDR, the three
+	-- HEX pairs, SW, PB, the Basic Timer group, the interrupt controller and
+	-- BUF_NONE) and relies on std_logic resolution; it must not be assigned
+	-- anywhere else.
 	SIGNAL io_bus_w			: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
 
 	-- Output enables, one per tri-state buffer. Exactly one is '1' at any
@@ -702,6 +717,63 @@ BEGIN
 		btcnt_o				=> btcnt_w
 	);
 
+	-- The Basic Interrupt Controller (clause 6.v): IE, IFG and TYPE at
+	-- 0x202C-0x202E, fed by the four sources this file already has pulses
+	-- for. cs_ic_w is IODEC6's sixth output, declared since the PERIPH
+	-- integration and unused until now; addr_i only needs the low two bits,
+	-- since PERIPH_AddressDecoder has already narrowed the access down to
+	-- this one device before cs_ic_w asserts. The decoder also asserts
+	-- cs_ic_w for 0x202F ("11") on purpose - int_ctrl's own header explains
+	-- why suppressing it there would cost a comparator for no gain, and the
+	-- module already returns zero for that address itself.
+	--
+	-- rst_i is rst_w, never the raw rst_i port, for the same reason as every
+	-- other clocked device here.
+	--
+	-- is_rx_i and is_tx_i are tied to '0': the USART is the 20% bonus and out
+	-- of scope, but its IE/IFG bits still exist because the register map
+	-- defines them - they will just never set themselves.
+	INTC: int_ctrl
+	generic map(
+		DATA_BUS_WIDTH		=> DATA_BUS_WIDTH
+	)
+	PORT MAP (
+		--Inputs
+		clk_i				=> mclk_w,
+		rst_i				=> rst_w,
+		cs_i				=> cs_ic_w,
+		addr_i				=> bus_addr_w(1 DOWNTO 0),
+		MemRead_ctrl_i		=> bus_read_w,
+		MemWrite_ctrl_i		=> bus_write_w,
+		data_wr_i			=> bus_wdata_w,
+		is_rx_i				=> '0',
+		is_tx_i				=> '0',
+		is_bt_i				=> bt_irq_w,
+		is_key1_i			=> key1_irq_w,
+		is_key2_i			=> key2_irq_w,
+		is_key3_i			=> key3_irq_w,
+		gie_i				=> gie_w,
+		inta_n_i			=> inta_n_w,
+
+		--Outputs
+		data_rd_o			=> rd_ic_w,
+		bus_drive_o			=> oe_ic_w,
+		intr_o				=> intr_w
+	);
+
+	-- gie_i and inta_n_i are CPU-side handshake signals, and the CPU side of
+	-- this protocol does not exist yet - RV32I_CORE.vhd has no interrupt
+	-- ports and CONTROL.VHD is still purely combinational. That is the next
+	-- task. Tied off here, this is safe and behaviourally inert: with gie_i
+	-- low, intr_o can never rise (intr_o <= gie_i WHEN ifg_w /= 0 ELSE '0'
+	-- in int_ctrl), and with inta_n_i held high the controller never sees
+	-- cycle1_w = '1' and so never enters a service cycle. bus_drive_o
+	-- therefore reduces to int_ctrl's ordinary rd_w term, cs_i AND
+	-- MemRead_ctrl_i, and the whole design behaves exactly as it did before
+	-- this file existed.
+	gie_w		<= '0';
+	inta_n_w	<= '1';
+
 	--=======================================
 	-- The shared I/O bus - the tri-state buffers of Figure 5
 	--=======================================
@@ -733,19 +805,24 @@ BEGIN
 	-- one instance already serves both BTCTL1 and BTCTL2 inside BTIF.
 	oe_bt_w		<= (cs_btctl_w OR cs_btcmpr0_w OR cs_btcmpr1_w OR cs_btcapr_w) AND bus_read_w;
 
+	-- oe_ic_w is NOT assigned here. Unlike every other device, int_ctrl
+	-- computes its own output enable (bus_drive_o) and this signal is simply
+	-- that port from the INTC instance above - see the note there for why an
+	-- ordinary cs AND MemRead term cannot do protocol cycle 1's job.
+
 	-- A bus with every buffer released floats at 'Z', and 'Z' propagated into
 	-- the register file would show up as red in the wave window and as
 	-- metavalue warnings rather than as data. BUF_NONE parks the bus at zero
 	-- whenever no device is driving it, which also gives the reads-as-zero
-	-- behaviour that unmapped I/O addresses need. 0x2014 through 0x2028 are
-	-- now all mapped (PORT_PB, then the Basic Timer register group); only
-	-- 0x2018-0x201B (USART, bonus, not part of this design) and 0x202C-0x202E
-	-- (the interrupt controller, not yet instantiated) remain unmapped.
+	-- behaviour that unmapped I/O addresses need. 0x2014 through 0x202E are
+	-- now all mapped (PORT_PB, the Basic Timer register group, then the
+	-- interrupt controller); only 0x2018-0x201B (USART, bonus, not part of
+	-- this design) remains unmapped.
 	--
-	-- oe_pb_w and oe_bt_w both have to appear in this NOR: leaving either out
-	-- would let BUF_NONE and that port's buffer both drive io_bus_w during a
-	-- load from its address range, resolving to 'X'.
-	oe_none_w	<= NOT (oe_ledr_w OR oe_hex0_1_w OR oe_hex2_3_w OR oe_hex4_5_w OR oe_sw_w OR oe_pb_w OR oe_bt_w);
+	-- oe_pb_w, oe_bt_w and oe_ic_w all have to appear in this NOR: leaving
+	-- any one out would let BUF_NONE and that port's buffer both drive
+	-- io_bus_w during a load from its address range, resolving to 'X'.
+	oe_none_w	<= NOT (oe_ledr_w OR oe_hex0_1_w OR oe_hex2_3_w OR oe_hex4_5_w OR oe_sw_w OR oe_pb_w OR oe_bt_w OR oe_ic_w);
 
 	BUF_LEDR: BidirPin
 	generic map(width => DATA_BUS_WIDTH)
@@ -775,6 +852,10 @@ BEGIN
 	generic map(width => DATA_BUS_WIDTH)
 	PORT MAP (Dout => rd_bt_w,		en => oe_bt_w,		Din => OPEN, IOpin => io_bus_w);
 
+	BUF_IC: BidirPin
+	generic map(width => DATA_BUS_WIDTH)
+	PORT MAP (Dout => rd_ic_w,		en => oe_ic_w,		Din => OPEN, IOpin => io_bus_w);
+
 	io_park_w	<= (OTHERS => '0');
 
 	BUF_NONE: BidirPin
@@ -787,7 +868,22 @@ BEGIN
 	-- The last hop: bit 13 of the address picks between the I/O bus and the
 	-- DTCM. This one is a real multiplexer, not a shared bus - the DTCM
 	-- output is an altsyncram q port and never goes high impedance.
-	bus_rdata_w	<= io_bus_w WHEN io_sel_w = '1' ELSE dtcm_q_w;
+	--
+	-- io_sel_w alone is not enough any more. Page 15 requires that in
+	-- protocol cycle 1 the interrupt controller puts TYPE on the data bus
+	-- while the CPU has not driven 0x202E onto the address bus at all -
+	-- io_sel_w would then be whatever bit 13 of a stale or unrelated address
+	-- happens to be, and could select dtcm_q_w instead of io_bus_w, losing
+	-- TYPE. Adding oe_ic_w = '1' to the condition covers that case: it is
+	-- true throughout cycle 1 regardless of what the address bus is doing.
+	-- The two terms cannot conflict - an ordinary load from 0x202C-0x202E
+	-- has io_sel_w = '1' and oe_ic_w = '1' together, selecting the same
+	-- io_bus_w either way, and a DTCM access has oe_ic_w = '0' because
+	-- int_ctrl is not selected. While inta_n_w is tied high (see INTC above)
+	-- this is inert: oe_ic_w can only be cs_ic_w AND bus_read_w, which
+	-- already implies io_sel_w = '1'. It is written now so the CPU-protocol
+	-- task does not have to touch this multiplexer again.
+	bus_rdata_w	<= io_bus_w WHEN (io_sel_w = '1' OR oe_ic_w = '1') ELSE dtcm_q_w;
 
 ---------------------------------------------------------------------------------------
 -- Copying out important signals only for Verification and FPGA Velidation(Signal-TAP)

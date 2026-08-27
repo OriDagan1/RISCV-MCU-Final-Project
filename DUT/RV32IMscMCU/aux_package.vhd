@@ -492,6 +492,41 @@ package aux_package is
 			btcmpr1_o			: OUT	STD_LOGIC_VECTOR(N-1 DOWNTO 0)
 		);
 	END COMPONENT;
+---------------------------------------------------------
+-- The Basic Interrupt Controller (clause 6.v): IE, IFG and TYPE at
+-- 0x202C-0x202E, the interrupt request flip-flops, the priority encoder and
+-- INTR. See INT_CTRL.vhd's header for bus_drive_o and the service protocol.
+	COMPONENT int_ctrl IS
+		generic(
+			DATA_BUS_WIDTH	: integer := 32
+		);
+		PORT(
+			--Inputs
+			clk_i			: IN	STD_LOGIC;
+			rst_i			: IN	STD_LOGIC;
+
+			cs_i			: IN	STD_LOGIC;
+			addr_i			: IN	STD_LOGIC_VECTOR(1 DOWNTO 0);
+			MemRead_ctrl_i	: IN	STD_LOGIC;
+			MemWrite_ctrl_i	: IN	STD_LOGIC;
+			data_wr_i		: IN	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+
+			is_rx_i			: IN	STD_LOGIC;
+			is_tx_i			: IN	STD_LOGIC;
+			is_bt_i			: IN	STD_LOGIC;
+			is_key1_i		: IN	STD_LOGIC;
+			is_key2_i		: IN	STD_LOGIC;
+			is_key3_i		: IN	STD_LOGIC;
+
+			gie_i			: IN	STD_LOGIC;
+			inta_n_i		: IN	STD_LOGIC;
+
+			--Outputs
+			data_rd_o		: OUT	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+			bus_drive_o		: OUT	STD_LOGIC;
+			intr_o			: OUT	STD_LOGIC
+		);
+	END COMPONENT;
 
 end aux_package;
 
