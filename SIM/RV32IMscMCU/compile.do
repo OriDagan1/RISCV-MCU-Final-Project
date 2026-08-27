@@ -71,7 +71,8 @@ foreach f [list \
 	$TB/tb_btcnt.vhd                  \
 	$TB/tb_basic_timer.vhd            \
 	$TB/tb_basic_timer_interface.vhd  \
-	$TB/tb_int_ctrl.vhd               ] {
+	$TB/tb_int_ctrl.vhd               \
+	$TB/tb_int_service.vhd            ] {
 	echo "vcom $f"
 	if {[catch {vcom -2008 -quiet $f} msg]} {
 		echo "COMPILE FAILED: $f"

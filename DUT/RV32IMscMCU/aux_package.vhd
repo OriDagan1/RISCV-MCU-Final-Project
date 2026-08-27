@@ -96,6 +96,13 @@ package aux_package is
 			mclk_i						:IN	STD_LOGIC;
 			divclk_i					:IN	STD_LOGIC;
 
+			-- Step 3 of 4 of the interrupt service protocol (clause 6.v,
+			-- page 15). The default MUST be repeated here: MCU.vhd's CPU
+			-- instantiation resolves through this component declaration, not
+			-- the entity directly, so an unassociated intr_i takes ITS
+			-- default from whichever one is in force at elaboration.
+			intr_i						:IN	STD_LOGIC := '0';
+
 			--Data bus, master side
 			dtcm_data_rd_i		:IN 	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
 
@@ -118,15 +125,33 @@ package aux_package is
 			alu_res_o 				:OUT	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
 			brTaken_o					:OUT 	STD_LOGIC;
 
-			mclk_cnt_o				:OUT	STD_LOGIC_VECTOR(CLK_CNT_WIDTH-1 DOWNTO 0)
+			mclk_cnt_o				:OUT	STD_LOGIC_VECTOR(CLK_CNT_WIDTH-1 DOWNTO 0);
+
+			--Outputs, interrupt service protocol
+			inta_n_o					:OUT	STD_LOGIC;
+			gie_o							:OUT	STD_LOGIC
 		);
 	end component;
 ---------------------------------------------------------  
 	component control is
-		PORT( 
+		generic(
+			DATA_BUS_WIDTH	: integer	:= 32;
+			PC_WIDTH		: integer	:= 10;
+			DA_WIDTH		: integer	:= 14
+		);
+		PORT(
 		--Inputs
 		instruction_i 		: IN 	STD_LOGIC_VECTOR(31 DOWNTO 0);
-		
+
+		--Inputs, interrupt service protocol (clause 6.v, page 15)
+		clk_i				: IN	STD_LOGIC;
+		rst_i				: IN	STD_LOGIC;
+		intr_i				: IN	STD_LOGIC;
+		div_busy_i			: IN	STD_LOGIC;
+		gp_i				: IN	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+		int_ret_addr_i		: IN	STD_LOGIC_VECTOR(PC_WIDTH-1 DOWNTO 0);
+		bus_rdata_i			: IN	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+
 		--Outputs
 		RegDst_ctrl_o 		: OUT 	STD_LOGIC;
 		ALUSrc_ctrl_o 		: OUT 	STD_LOGIC;
@@ -144,7 +169,19 @@ package aux_package is
 		--Division accelerator control
 		DIVOp_ctrl_o		: OUT	STD_LOGIC;	-- any of div/divu/rem/remu
 		DIVSigned_ctrl_o	: OUT	STD_LOGIC;	-- div/rem  (signed operands)
-		DIVRem_ctrl_o		: OUT	STD_LOGIC	-- rem/remu (write back the residue)
+		DIVRem_ctrl_o		: OUT	STD_LOGIC;	-- rem/remu (write back the residue)
+
+		--Outputs, interrupt service protocol
+		inta_n_o			: OUT	STD_LOGIC;
+		int_hold_o			: OUT	STD_LOGIC;
+		int_addr_we_o		: OUT	STD_LOGIC;
+		int_addr_o			: OUT	STD_LOGIC_VECTOR(DA_WIDTH-1 DOWNTO 0);
+		int_mem_read_o		: OUT	STD_LOGIC;
+		int_pc_we_o			: OUT	STD_LOGIC;
+		int_pc_o			: OUT	STD_LOGIC_VECTOR(PC_WIDTH-1 DOWNTO 0);
+		int_rf_we_o			: OUT	STD_LOGIC;
+		int_rf_rd_o			: OUT	STD_LOGIC_VECTOR(4 DOWNTO 0);
+		int_rf_data_o		: OUT	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0)
 	);
 	end component;
 ---------------------------------------------------------	

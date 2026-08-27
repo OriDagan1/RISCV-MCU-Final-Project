@@ -33,6 +33,15 @@ ENTITY RV32I_CORE IS
 		mclk_i				:IN	STD_LOGIC;	-- CPU clock
 		divclk_i			:IN	STD_LOGIC;	-- accelerator clock, faster than mclk
 
+		-- Step 3 of 4 of the interrupt service protocol (clause 6.v, page
+		-- 15). A default of '0' is required, not just convenient: MCU.vhd's
+		-- CPU instantiation is step 4's job and does not mention this port,
+		-- so it stays unassociated until then. Without a default that would
+		-- be an unconnected input with no source and an elaboration error;
+		-- with it, MCU.vhd elaborates exactly as it does today and intr_i
+		-- reads '0', so int_state_q inside CONTROL can never leave S_IDLE.
+		intr_i				:IN	STD_LOGIC := '0';	-- from the interrupt controller
+
 		--Data bus, master side. The core drives a byte address over the whole
 		--data address space of Figure 2 and does not know what answers it:
 		--MCU.vhd decodes DTCM against memory-mapped I/O.
@@ -57,7 +66,14 @@ ENTITY RV32I_CORE IS
 		alu_res_o 			:OUT	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
 		brTaken_o			:OUT 	STD_LOGIC;
 
-		mclk_cnt_o			:OUT	STD_LOGIC_VECTOR(CLK_CNT_WIDTH-1 DOWNTO 0)
+		mclk_cnt_o			:OUT	STD_LOGIC_VECTOR(CLK_CNT_WIDTH-1 DOWNTO 0);
+
+		--Outputs, interrupt service protocol (clause 6.v, page 15). MCU.vhd
+		--does not connect these yet - that is step 4 - so they are simply
+		--unconnected at the top level for now, which is legal and silent for
+		--an OUT port left out of a port map.
+		inta_n_o			:OUT	STD_LOGIC;	-- ACTIVE LOW, idles at '1'
+		gie_o				:OUT	STD_LOGIC	-- gp_o(0) from IDECODE
 	);
 END RV32I_CORE;
 --============================================================================
@@ -109,6 +125,21 @@ ARCHITECTURE structure OF RV32I_CORE IS
 	SIGNAL reg_write_gated_w	: STD_LOGIC;
 	SIGNAL mem_write_gated_w	: STD_LOGIC;
 
+	-- Interrupt service protocol (clause 6.v, page 15): the real connections
+	-- between IFETCH, IDECODE and CONTROL that steps 1 and 2 tied inactive.
+	SIGNAL gp_w				: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);	-- IDECODE's continuous x3 read
+	SIGNAL int_ret_addr_w		: STD_LOGIC_VECTOR(PC_WIDTH-1 DOWNTO 0);		-- IFETCH's pre-override, pre-hold next PC
+	SIGNAL int_pc_we_w			: STD_LOGIC;
+	SIGNAL int_pc_w				: STD_LOGIC_VECTOR(PC_WIDTH-1 DOWNTO 0);
+	SIGNAL int_hold_w			: STD_LOGIC;
+	SIGNAL int_rf_we_w			: STD_LOGIC;
+	SIGNAL int_rf_rd_w			: STD_LOGIC_VECTOR(4 DOWNTO 0);
+	SIGNAL int_rf_data_w		: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+	SIGNAL int_addr_we_w		: STD_LOGIC;
+	SIGNAL int_addr_w			: STD_LOGIC_VECTOR(DA_WIDTH-1 DOWNTO 0);
+	SIGNAL int_mem_read_w		: STD_LOGIC;
+	SIGNAL inta_n_w				: STD_LOGIC;
+
 BEGIN
 
 	--===========================================
@@ -135,18 +166,18 @@ BEGIN
 		alu_res_i				=> alu_res_w,
 		stall_i					=> div_busy_w,
 
-		-- Step 2 of 4 of the interrupt service protocol (clause 6.v, page
-		-- 15): these ports exist but are tied inactive. The control unit
-		-- drives them from step 3, in the same entity.
-		int_pc_we_i			=> '0',
-		int_pc_i				=> (OTHERS => '0'),
-		int_hold_i			=> '0',
+		-- Step 3 of 4 of the interrupt service protocol (clause 6.v, page
+		-- 15): the real connections to CONTROL, driven by the state machine
+		-- below instead of tied inactive as in step 2.
+		int_pc_we_i			=> int_pc_we_w,
+		int_pc_i				=> int_pc_w,
+		int_hold_i			=> int_hold_w,
 
 		--Outputs
 		pc_o 						=> pc_w,
 		pc_plus4_o	 		=> pc_plus4_w,
 		instruction_o 	=> instruction_w,
-		int_ret_addr_o	=> OPEN
+		int_ret_addr_o	=> int_ret_addr_w
 	);
 	--=======================================
 	-- IDECODE module connection
@@ -168,32 +199,45 @@ BEGIN
 		RegWrite_ctrl_i 	=> reg_write_gated_w,
 		MemtoReg_ctrl_i 	=> MemtoReg_w,
 
-		-- Step 1 of 4 of the interrupt service protocol (clause 6.v, page 15):
-		-- this port exists but is tied inactive. The service state machine
-		-- that drives it lands in step 3, in this same entity; until then
-		-- int_rf_we_i='0' makes the hardware write port dead logic by
-		-- construction, and IDECODE's ordinary write-back path is unchanged.
-		int_rf_we_i			=> '0',
-		int_rf_rd_i			=> (OTHERS => '0'),
-		int_rf_data_i		=> (OTHERS => '0'),
+		-- Step 3 of 4 of the interrupt service protocol (clause 6.v, page
+		-- 15): the real connection to CONTROL's hardware write port.
+		int_rf_we_i			=> int_rf_we_w,
+		int_rf_rd_i			=> int_rf_rd_w,
+		int_rf_data_i		=> int_rf_data_w,
 
 		--Outputs
 		read_data1_o 		=> read_data1_w,
 		read_data2_o 		=> read_data2_w,
 		SignExt_o 			=> sign_extend_w,
 
-		-- Left open until RV32I_CORE gains its own gie_o port in step 4; the
-		-- interrupt controller cannot reach this signal before then.
-		gp_o				=> OPEN
+		-- Driven now so CONTROL (gp_i, for the GIE clear/set) and RV32I_CORE's
+		-- own gie_o (below) both have it; MCU.vhd still ties the interrupt
+		-- controller's gie_i to '0' until step 4 connects gie_o.
+		gp_o				=> gp_w
 	);
 	--=======================================
 	-- CONTROL module connection
 	--=======================================
 	CTL:   control
-	PORT MAP ( 	
+	generic map(
+		DATA_BUS_WIDTH	=> DATA_BUS_WIDTH,
+		PC_WIDTH		=> PC_WIDTH,
+		DA_WIDTH		=> DA_WIDTH
+	)
+	PORT MAP (
 		--Inputs
 		instruction_i 		=> instruction_w,
-		
+
+		-- Step 3 of 4 of the interrupt service protocol (clause 6.v, page
+		-- 15): the state machine's own view of the bus and the CPU's state.
+		clk_i				=> mclk_i,
+		rst_i				=> rst_i,
+		intr_i				=> intr_i,
+		div_busy_i			=> div_busy_w,
+		gp_i				=> gp_w,
+		int_ret_addr_i		=> int_ret_addr_w,
+		bus_rdata_i			=> dtcm_data_rd_i,
+
 		--Outputs
 		RegDst_ctrl_o		=> reg_dst_w,
 		ALUSrc_ctrl_o 		=> alu_src_w,
@@ -209,7 +253,19 @@ BEGIN
 		MULOp_ctrl_o		=> mul_op_w,
 		DIVOp_ctrl_o		=> div_op_w,
 		DIVSigned_ctrl_o	=> div_signed_w,
-		DIVRem_ctrl_o		=> div_rem_w
+		DIVRem_ctrl_o		=> div_rem_w,
+
+		--Outputs, interrupt service protocol
+		inta_n_o			=> inta_n_w,
+		int_hold_o			=> int_hold_w,
+		int_addr_we_o		=> int_addr_we_w,
+		int_addr_o			=> int_addr_w,
+		int_mem_read_o		=> int_mem_read_w,
+		int_pc_we_o			=> int_pc_we_w,
+		int_pc_o			=> int_pc_w,
+		int_rf_we_o			=> int_rf_we_w,
+		int_rf_rd_o			=> int_rf_rd_w,
+		int_rf_data_o		=> int_rf_data_w
 	);
 	--=======================================
 	-- EXECUTE module connection
@@ -295,8 +351,22 @@ BEGIN
 	-- the same operands, while both write enables are held off so nothing is
 	-- committed. div_busy_w is low again for the one cycle in which the
 	-- write-back happens and the PC moves on.
-	reg_write_gated_w	<= reg_write_w AND NOT div_busy_w;
-	mem_write_gated_w	<= mem_write_w AND NOT div_busy_w;
+	--
+	-- int_hold_w joins the same two gates for the same reason: cycle 1 and
+	-- cycle 2 freeze IFETCH's PC, so the instruction sitting in instruction_w
+	-- is the one that was about to execute when the interrupt arrived, and
+	-- without this term its write-back would commit on every held cycle
+	-- instead of the one cycle it was meant for. reg_write_gated_w also has
+	-- to let the hardware write port through while the ordinary path is
+	-- suppressed: it is OR-ed with int_rf_we_w so RegWrite_ctrl_o (the
+	-- Signal-Tap / verification copy of "a register write happened") stays
+	-- accurate during cycle 1, cycle 2 and reti. IDECODE's own write process
+	-- already gives int_rf_we_i unconditional priority over RegWrite_ctrl_i
+	-- (see the note there), so this OR term changes nothing about which
+	-- value actually gets written - only whether this observation output
+	-- reports it.
+	reg_write_gated_w	<= (reg_write_w AND NOT div_busy_w AND NOT int_hold_w) OR int_rf_we_w;
+	mem_write_gated_w	<= mem_write_w AND NOT div_busy_w AND NOT int_hold_w;
 
 	--=======================================
 	-- Data bus, master side
@@ -305,7 +375,13 @@ BEGIN
 	-- space. Selecting the DTCM against memory-mapped I/O, and turning the
 	-- byte address into whatever each slave wants, is MCU.vhd's job - the
 	-- CPU has no business knowing which device answers.
-	dtcm_addr_w	<= alu_res_w(DA_WIDTH-1 DOWNTO 0);
+	--
+	-- Cycle 2 of the interrupt protocol emulates a load of Mem[TYPE]: CONTROL
+	-- drives int_addr_we_w for that one cycle, taking the address bus away
+	-- from the ALU exactly the way int_pc_we_i already takes the PC mux away
+	-- from ordinary control flow in IFETCH.
+	dtcm_addr_w	<= int_addr_w(DA_WIDTH-1 DOWNTO 0)	WHEN	int_addr_we_w = '1'	ELSE
+					alu_res_w(DA_WIDTH-1 DOWNTO 0);
 
 	--=======================================
 	-- MCLK counter register connection
@@ -337,10 +413,17 @@ BEGIN
   
 	dtcm_addr_o 		<= 	dtcm_addr_w;							-- data bus, byte address
 	dtcm_data_wr_o 		<= 	read_data2_w;							-- data bus, write data
-	MemRead_ctrl_o		<=	mem_read_w;								-- CONTROL output
+	-- OR-ed with int_mem_read_w: cycle 2 emulates a load of Mem[TYPE] without
+	-- an instruction driving mem_read_w, so the assertion has to come from
+	-- CONTROL's own state directly.
+	MemRead_ctrl_o		<=	mem_read_w OR int_mem_read_w;			-- CONTROL output
 	MemWrite_ctrl_o 	<= 	mem_write_gated_w;						-- CONTROL output, stall applied
 
 	mclk_cnt_o			<=	mclk_cnt_q;								-- TOP output
+
+	-- Interrupt service protocol (clause 6.v, page 15)
+	inta_n_o			<=	inta_n_w;								-- CONTROL output, ACTIVE LOW
+	gie_o				<=	gp_w(0);								-- IDECODE's gp_o(0)
 	
 ---------------------------------------------------------------------------------------
 
