@@ -244,10 +244,15 @@ package aux_package is
 			alu_res_i 		: IN 	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
 			stall_i				: IN 	STD_LOGIC;
 
+			int_pc_we_i		: IN 	STD_LOGIC;
+			int_pc_i			: IN 	STD_LOGIC_VECTOR(PC_WIDTH-1 DOWNTO 0);
+			int_hold_i		: IN 	STD_LOGIC;
+
 			--Outputs
 			pc_o 					: OUT	STD_LOGIC_VECTOR(PC_WIDTH-1 DOWNTO 0);
 			pc_plus4_o 		: OUT	STD_LOGIC_VECTOR(PC_WIDTH-1 DOWNTO 0);
-			instruction_o : OUT	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0)
+			instruction_o : OUT	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+			int_ret_addr_o	: OUT	STD_LOGIC_VECTOR(PC_WIDTH-1 DOWNTO 0)
 		);
 	end component;
 ---------------------------------------------------------

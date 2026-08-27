@@ -135,10 +135,18 @@ BEGIN
 		alu_res_i				=> alu_res_w,
 		stall_i					=> div_busy_w,
 
+		-- Step 2 of 4 of the interrupt service protocol (clause 6.v, page
+		-- 15): these ports exist but are tied inactive. The control unit
+		-- drives them from step 3, in the same entity.
+		int_pc_we_i			=> '0',
+		int_pc_i				=> (OTHERS => '0'),
+		int_hold_i			=> '0',
+
 		--Outputs
 		pc_o 						=> pc_w,
 		pc_plus4_o	 		=> pc_plus4_w,
-		instruction_o 	=> instruction_w    
+		instruction_o 	=> instruction_w,
+		int_ret_addr_o	=> OPEN
 	);
 	--=======================================
 	-- IDECODE module connection
