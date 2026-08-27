@@ -48,6 +48,7 @@ foreach f [list \
 	$DUT/BT_OUTPUT_UNIT.vhd           \
 	$DUT/BT_CAPTURE.vhd               \
 	$DUT/BASIC_TIMER.vhd              \
+	$DUT/BASIC_TIMER_INTERFACE.vhd    \
 	$DUT/CONTROL.VHD                  \
 	$DUT/IDECODE.VHD                  \
 	$DUT/IFETCH.VHD                   \
@@ -67,7 +68,8 @@ foreach f [list \
 	$TB/tb_GPIO_HEX_Pair_Interface.vhd \
 	$TB/tb_GPIO_PB_Interface.vhd      \
 	$TB/tb_btcnt.vhd                  \
-	$TB/tb_basic_timer.vhd            ] {
+	$TB/tb_basic_timer.vhd            \
+	$TB/tb_basic_timer_interface.vhd  ] {
 	echo "vcom $f"
 	if {[catch {vcom -2008 -quiet $f} msg]} {
 		echo "COMPILE FAILED: $f"
