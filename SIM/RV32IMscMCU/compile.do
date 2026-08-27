@@ -95,7 +95,10 @@ if {[catch {vmap altera_lnsim "$::env(MODEL_TECH)/../altera/vhdl/altera_lnsim"} 
 	quietly set PLL_SIM_OK 0
 }
 if {$PLL_SIM_OK} {
-	foreach p {PLL_MCLK PLL_DIVCLK PLL_SMCLK} {
+	# SMCLK is not in this list: it is a synchronous branch of MCLK
+	# (smclk_w <= mclk_w in MCU.vhd), not a PLL output, so there is no
+	# PLL_SMCLK IP left to load a simulation model for.
+	foreach p {PLL_MCLK PLL_DIVCLK} {
 		# the .vho defines <name>_pll_0, the wrapper instantiates it, so the
 		# submodule has to be analysed first
 		foreach f [list $PLLD/$p/simulation/submodules/${p}_pll_0.vho \

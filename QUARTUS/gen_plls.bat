@@ -1,7 +1,8 @@
 @echo off
 REM ===========================================================================
 REM Advanced CPU architecture and Hardware Accelerators Lab 361-1-4693 BGU
-REM Regenerate the three clock PLLs and the matching VHDL constants.
+REM Regenerate the two clock PLLs (MCLK, DIVCLK) and the matching VHDL
+REM constants. SMCLK is not a PLL - see the note on CLOCKS in gen_plls.tcl.
 REM
 REM Run from this directory:   gen_plls.bat
 REM
@@ -19,7 +20,7 @@ if errorlevel 1 goto :fail
 
 echo.
 echo [2/2] generating IP  (this takes a minute or two per PLL)
-for %%P in (PLL_MCLK PLL_DIVCLK PLL_SMCLK) do (
+for %%P in (PLL_MCLK PLL_DIVCLK) do (
     echo    %%P
     call "%QSYS%\qsys-generate.exe" %%P.qsys --synthesis=VHDL --simulation=VHDL --part=5CSXFC6D6F31C6
     if errorlevel 1 goto :fail

@@ -48,8 +48,9 @@ quietly set DTCM "/tb_RV32I/CORE/MEM/data_memory/MEMORY/m_mem_data_a"
 # generic on the testbench, so it needs an elaborated design to read; load
 # once plainly, check, then reload with the right images.
 #-----------------------------------------------------------------------------
-# MODELSIM=1 picks the behavioural clock generators in MCU.vhd over the three
-# PLL IP cores. Identical frequencies either way - both branches read
+# MODELSIM=1 picks the behavioural clock generators in MCU.vhd over the two
+# PLL IP cores (SMCLK has no PLL of its own - see MCU.vhd). Identical
+# frequencies either way - both branches read
 # clk_config_package.vhd, which QUARTUS/gen_plls.tcl writes alongside the IP -
 # but the behavioural path needs no PLL lock time. To simulate the real IP
 # instead, set this to 0; compile.do reports whether the models are loaded.

@@ -1,29 +1,54 @@
 #=============================================================================
 # Advanced CPU architecture and Hardware Accelerators Lab 361-1-4693 BGU
-# Generate the three clock PLLs.
+# Generate the two clock PLLs - MCLK and DIVCLK.
 #
 # THIS FILE IS THE SINGLE SOURCE OF TRUTH FOR THE CLOCK FREQUENCIES.
-# To retune a clock, change one number in CLOCKS below and re-run:
+# To retune a clock, change one number in CLOCKS below (and, for MCLK or
+# DIVCLK, the matching entry in PLL_CLOCKS) and re-run:
 #
 #     QUARTUS\gen_plls.bat
 #
 # That regenerates the IP *and* rewrites clk_config_package.vhd, so the
 # simulation clock generators and the FPGA PLLs can never drift apart.
 #
-# Each clock gets its own PLL instance, one IP core per clock, matching the
-# style of the PLL supplied with LAB4 (a single outclk_0 per core).
+# MCLK and DIVCLK each get their own PLL instance, one IP core per clock,
+# matching the style of the PLL supplied with LAB4 (a single outclk_0 per
+# core). SMCLK does not: it is a synchronous branch of MCLK rather than a
+# PLL output - see the note on CLOCKS below.
 #=============================================================================
 
 package require -exact qsys 21.1
 
 # ----------------------------------------------------------------------------
 # EDIT HERE:  { entity_name  output_MHz  what_it_drives }
+#
+# CLOCKS drives the VHDL constant emission at the bottom of this script and
+# lists every named clock in the tree, including SMCLK. PLL_CLOCKS below is
+# the smaller list that actually gets an altera_pll IP core.
+#
+# SMCLK stays in CLOCKS even though PLL_SMCLK is gone: Figure 1 of the task
+# definition draws SMCLK as a named branch of the clock tree, not as a PLL
+# output, so MCU.vhd now derives it synchronously from MCLK
+# (smclk_w <= mclk_w) instead of instantiating a third PLL. The constant
+# G_SMCLK_MHZ still has to come out of here, equal to G_MCLK_MHZ, because
+# BASIC_TIMER_INTERFACE.vhd carries a concurrent ASSERT that refuses to
+# elaborate a design where they differ - that assert is what makes it safe to
+# treat the CPU-to-timer register writes as an ordinary related-clock path
+# instead of a clock domain crossing. Retuning MCLK without retuning this
+# entry, or removing the entry, defeats that guard rail.
 # ----------------------------------------------------------------------------
 set REFCLK_MHZ 50.0
 set CLOCKS {
 	{PLL_MCLK    25.0   "CPU clock"}
 	{PLL_DIVCLK  200.0  "division accelerator"}
-	{PLL_SMCLK   25.0   "Basic Timer source clock"}
+	{PLL_SMCLK   25.0   "Basic Timer source clock - synchronous branch of MCLK, no PLL of its own"}
+}
+
+# The clocks that actually get an altera_pll IP core. SMCLK is deliberately
+# absent - see the note on CLOCKS above.
+set PLL_CLOCKS {
+	{PLL_MCLK    25.0}
+	{PLL_DIVCLK  200.0}
 }
 
 # DIVCLK is measured, not guessed. It was briefly dropped to 100 MHz on a
@@ -52,9 +77,11 @@ set DEVICE_FAMILY {Cyclone V}
 set DEVICE        {5CSXFC6D6F31C6}
 
 # ----------------------------------------------------------------------------
-# Build one .qsys per clock
+# Build one .qsys per clock that actually gets a PLL. SMCLK is not in
+# PLL_CLOCKS - see the note on CLOCKS above - so no PLL_SMCLK.qsys is written
+# here any more.
 # ----------------------------------------------------------------------------
-foreach c $CLOCKS {
+foreach c $PLL_CLOCKS {
 	set name [lindex $c 0]
 	set freq [lindex $c 1]
 

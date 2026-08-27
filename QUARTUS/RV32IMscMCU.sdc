@@ -1,8 +1,15 @@
 # 50 MHz board oscillator on CLOCK_50
 create_clock -name CLOCK_50 -period 20.000 [get_ports clk_i]
 
-# MCLK 25, DIVCLK 100 and SMCLK 25 are PLL outputs.
-# derive_pll_clocks picks up all three automatically.
+# MCLK and DIVCLK are PLL outputs; derive_pll_clocks picks up both
+# automatically. SMCLK is no longer a PLL output - it is a synchronous
+# branch of MCLK (smclk_w <= mclk_w in MCU.vhd), so it needs no clock
+# of its own here. BTCLK (SMCLK through BT_CLKDIV's BTSSEL divider,
+# once basic_timer is instantiated) is still a clock generated in
+# fabric and still needs its own create_generated_clock for the /2,
+# /4 and /8 taps plus set_clock_groups -exclusive between them, as
+# BT_CLKDIV.vhd's header describes - that requirement is unchanged by
+# this file and not yet added below.
 derive_pll_clocks
 derive_clock_uncertainty
 
