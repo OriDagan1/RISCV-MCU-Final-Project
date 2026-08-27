@@ -50,6 +50,8 @@ ARCHITECTURE sim OF tb_GPIO_PB_Interface IS
 	SIGNAL key2_irq_o		: STD_LOGIC;
 	SIGNAL key3_irq_o		: STD_LOGIC;
 
+	SIGNAL sim_done			: BOOLEAN := FALSE;
+
 
 	-----------------------------------------------------------------------------------------
 	-- Expected PORT_PB read value
@@ -127,21 +129,7 @@ BEGIN
 	-----------------------------------------------------------------------------------------
 	-- Clock generation
 	-----------------------------------------------------------------------------------------
-	CLOCK:
-	PROCESS
-	BEGIN
-
-		WHILE TRUE LOOP
-
-			clk_i <= '0';
-			WAIT FOR CLK_PERIOD / 2;
-
-			clk_i <= '1';
-			WAIT FOR CLK_PERIOD / 2;
-
-		END LOOP;
-
-	END PROCESS;
+	clk_i <= NOT clk_i AFTER CLK_PERIOD/2 WHEN NOT sim_done ELSE '0';
 
 
 	-----------------------------------------------------------------------------------------
@@ -687,6 +675,8 @@ BEGIN
 		REPORT "============================================================" SEVERITY NOTE;
 		REPORT "ALL GPIO_PB_Interface TESTS PASSED" SEVERITY NOTE;
 		REPORT "============================================================" SEVERITY NOTE;
+
+		sim_done <= TRUE;
 
 		WAIT;
 
