@@ -107,10 +107,13 @@ bus 10000000000101 00000000000000000000000000000000 0 1
 chk "rdata    " /tb_RV32I/CORE/bus_rdata_w hex 0000000e
 
 echo "-- load PORT_PB 0x2014 - the testbench holds KEY_i at \"111\", all released"
+# 0x07, not 0x0E: the forum fixes KEY1 at bit 0, KEY2 at bit 1, KEY3 at bit 2, so three
+# released keys read as 0b111. Unrelated to the 0x0E expected for the HEX1 readback above,
+# which is the byte that was stored there - the two sharing a value was a coincidence.
 bus 10000000010100 00000000000000000000000000000000 0 1
 chk "oe_pb_w  " /tb_RV32I/CORE/oe_pb_w    bin 1
 chk "oe_none_w" /tb_RV32I/CORE/oe_none_w  bin 0
-chk "rdata    " /tb_RV32I/CORE/bus_rdata_w hex 0000000e
+chk "rdata    " /tb_RV32I/CORE/bus_rdata_w hex 00000007
 
 echo "-- load 0x2018 - USART bonus, deliberately undecoded, BUF_NONE answers"
 bus 10000000011000 00000000000000000000000000000000 0 1

@@ -144,6 +144,12 @@ ARCHITECTURE rtl OF GPIO_PB_Interface IS
 	CONSTANT PB_MSB			: integer := 3;
 	CONSTANT PB_LSB			: integer := 1;
 
+	-- How many keys this port carries, i.e. how many bits of the read data they occupy.
+	-- The bus layout is NOT the pin layout: the keys are numbered 3..1 on the pins but
+	-- occupy bits 2..0 of PORT_PB, so the read path below needs a width rather than a
+	-- reuse of PB_MSB/PB_LSB. See the note on the read path for the specification.
+	CONSTANT PB_COUNT		: integer := PB_MSB - PB_LSB + 1;
+
 	-- The level an unpressed active low key sits at, held there by the pull ups of Figure 6.
 	CONSTANT KEY_IDLE		: STD_LOGIC_VECTOR(PB_MSB DOWNTO PB_LSB) := (OTHERS => '1');
 
@@ -194,17 +200,24 @@ BEGIN
 	--=======================================
 	-- Read path : device -> CPU
 	--=======================================
-	-- Bit i of the port is KEYi: bit 3 is KEY3, bit 2 is KEY2, bit 1 is KEY1, and bit 0
-	-- reads as zero because KEY0 is the reset and is not part of this device.
+	-- KEY1 -> bit 0, KEY2 -> bit 1, KEY3 -> bit 2. Bits 31:3 read as zero. KEY0 has no bit
+	-- at all: it is the system RESET of clause 3 and is not part of this device.
 	--
-	-- This layout is a choice made here, NOT a requirement. Neither the project definition
-	-- nor the preparation lecture states which bit of PORT_PB carries which key, and no
-	-- benchmark application supplied with the project reads this port. Aligning the bit
-	-- index with the key number is simply the least surprising arrangement and matches how
-	-- PORT_SW lines SW7..SW0 up with bits 7..0. If a later specification or an application
-	-- from the lecturer fixes a different layout, this is the only place that has to change
-	-- - nothing downstream depends on it, because the interrupt requests leave the module on
-	-- their own dedicated lines and never travel through these bits.
+	-- THIS LAYOUT IS SPECIFIED, not chosen. The course forum settles it: "the assignment
+	-- follows the order KEY1-KEY3 into bits 0-2 respectively. KEY0 is not included, since
+	-- it is the interface for the system RESET operation." An earlier version of this file
+	-- put KEY3..KEY1 in bits 3..1 with bit 0 reading zero, on the reasoning that aligning
+	-- the bit index with the key number was the least surprising arrangement in the absence
+	-- of a specification. There is a specification now, and it says otherwise.
+	--
+	-- NOT TO BE CONFUSED WITH THE IFG BIT POSITIONS, which are a different register with a
+	-- different layout and are NOT affected by the above. The interrupt controller places
+	-- KEY1IFG at bit 3, KEY2IFG at bit 4 and KEY3IFG at bit 5, from the IE/IFG register map
+	-- on page 14 - see INT_CTRL.vhd, and the lecturer's own io_map.s, which defines
+	-- KEY3IE_KEY2IE_KEY1IE as 0x38 and KEY1IFG_MASK as 0xFFF7. The two layouts genuinely
+	-- differ; making one match the other would break the applications. Nothing links them
+	-- in hardware either: the interrupt requests leave this module on their own dedicated
+	-- lines and never travel through these bits.
 	--
 	-- The keys are reported in pin polarity, unmodified: '1' is released and '0' is pressed.
 	-- Nothing is inverted here, which keeps the bit a program reads identical to the signal
@@ -213,9 +226,11 @@ BEGIN
 	-- The synchronized value is what reaches the bus, not the raw pin. It costs nothing -
 	-- the flops exist for the interrupt path anyway - and it means the CPU and the edge
 	-- detector always see one and the same view of the keys.
-	rdata_w(DATA_BUS_WIDTH-1 DOWNTO PB_MSB+1)	<= (OTHERS => '0');
-	rdata_w(PB_MSB DOWNTO PB_LSB)				<= key_sync_q;
-	rdata_w(0)									<= '0';
+	-- key_sync_q is indexed 3 downto 1 and the slice is 2 downto 0, so this assignment maps
+	-- by position: key_sync_q(3)=KEY3 -> bit 2, key_sync_q(2)=KEY2 -> bit 1,
+	-- key_sync_q(1)=KEY1 -> bit 0, which is the order the forum specifies.
+	rdata_w(DATA_BUS_WIDTH-1 DOWNTO PB_COUNT)	<= (OTHERS => '0');
+	rdata_w(PB_COUNT-1 DOWNTO 0)				<= key_sync_q;
 
 	-- The device answers only when the address on the bus is its own and the access is a
 	-- load; a store to 0x2014 is silently ignored. MCU.vhd gates this same condition again

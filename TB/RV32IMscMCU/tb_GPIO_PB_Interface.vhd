@@ -56,10 +56,17 @@ ARCHITECTURE sim OF tb_GPIO_PB_Interface IS
 	-----------------------------------------------------------------------------------------
 	-- Expected PORT_PB read value
 	--
-	-- data[3] = KEY3
-	-- data[2] = KEY2
-	-- data[1] = KEY1
-	-- data[0] = 0
+	-- data[2] = KEY3
+	-- data[1] = KEY2
+	-- data[0] = KEY1
+	-- data[31:3] = 0
+	--
+	-- The course forum fixes this order: "the assignment follows the order KEY1-KEY3 into
+	-- bits 0-2 respectively. KEY0 is not included, since it is the interface for the system
+	-- RESET operation." This function and the literals below previously expected KEY3..KEY1
+	-- in bits 3..1 with bit 0 zero, which was this design's own guess before the order was
+	-- specified. Not to be confused with the IFG register, where the key flags really do
+	-- sit at bits 3, 4 and 5 - a different register with a different, and unchanged, map.
 	-----------------------------------------------------------------------------------------
 	FUNCTION expected_pb(
 		keys : STD_LOGIC_VECTOR(3 DOWNTO 1)
@@ -71,7 +78,9 @@ ARCHITECTURE sim OF tb_GPIO_PB_Interface IS
 
 		result_v := (OTHERS => '0');
 
-		result_v(3 DOWNTO 1) := keys;
+		-- keys is indexed 3 downto 1 and the target slice is 2 downto 0, so this maps by
+		-- position: KEY3 -> bit 2, KEY2 -> bit 1, KEY1 -> bit 0.
+		result_v(2 DOWNTO 0) := keys;
 
 		RETURN result_v;
 
@@ -178,8 +187,8 @@ BEGIN
 
 		WAIT FOR 1 ns;
 
-		ASSERT data_rd_o = x"0000000E"
-			REPORT "ERROR: PORT_PB reset/idle read should be 0x0000000E"
+		ASSERT data_rd_o = x"00000007"
+			REPORT "ERROR: PORT_PB reset/idle read should be 0x00000007"
 			SEVERITY ERROR;
 
 
@@ -228,7 +237,7 @@ BEGIN
 
 		WAIT FOR 1 ns;
 
-		ASSERT data_rd_o = x"0000000E"
+		ASSERT data_rd_o = x"00000007"
 			REPORT "ERROR: Idle KEY value read incorrectly"
 			SEVERITY ERROR;
 
@@ -270,8 +279,8 @@ BEGIN
 			SEVERITY ERROR;
 
 
-		ASSERT data_rd_o = x"0000000C"
-			REPORT "ERROR: KEY1 pressed read value should be 0x0000000C"
+		ASSERT data_rd_o = x"00000006"
+			REPORT "ERROR: KEY1 pressed read value should be 0x00000006"
 			SEVERITY ERROR;
 
 
@@ -324,7 +333,7 @@ BEGIN
 			REPORT "ERROR: KEY1 release affected another IRQ output"
 			SEVERITY ERROR;
 
-		ASSERT data_rd_o = x"0000000E"
+		ASSERT data_rd_o = x"00000007"
 			REPORT "ERROR: PORT_PB did not update after KEY1 release"
 			SEVERITY ERROR;
 
@@ -489,8 +498,8 @@ BEGIN
 
 		wait_rising_edges(2);
 
-		ASSERT data_rd_o = x"00000002"
-			REPORT "ERROR: KEY=001 should read as 0x00000002"
+		ASSERT data_rd_o = x"00000001"
+			REPORT "ERROR: KEY=001 should read as 0x00000001"
 			SEVERITY ERROR;
 
 		wait_rising_edges(1);
@@ -501,8 +510,8 @@ BEGIN
 
 		wait_rising_edges(2);
 
-		ASSERT data_rd_o = x"00000004"
-			REPORT "ERROR: KEY=010 should read as 0x00000004"
+		ASSERT data_rd_o = x"00000002"
+			REPORT "ERROR: KEY=010 should read as 0x00000002"
 			SEVERITY ERROR;
 
 		wait_rising_edges(1);
@@ -513,8 +522,8 @@ BEGIN
 
 		wait_rising_edges(2);
 
-		ASSERT data_rd_o = x"00000008"
-			REPORT "ERROR: KEY=100 should read as 0x00000008"
+		ASSERT data_rd_o = x"00000004"
+			REPORT "ERROR: KEY=100 should read as 0x00000004"
 			SEVERITY ERROR;
 
 		wait_rising_edges(1);
@@ -525,8 +534,8 @@ BEGIN
 
 		wait_rising_edges(2);
 
-		ASSERT data_rd_o = x"0000000E"
-			REPORT "ERROR: KEY=111 should read as 0x0000000E"
+		ASSERT data_rd_o = x"00000007"
+			REPORT "ERROR: KEY=111 should read as 0x00000007"
 			SEVERITY ERROR;
 
 		wait_rising_edges(1);
@@ -587,7 +596,7 @@ BEGIN
 
 		wait_rising_edges(3);
 
-		ASSERT data_rd_o = x"0000000C"
+		ASSERT data_rd_o = x"00000006"
 			REPORT "ERROR: Pre-reset KEY state incorrect"
 			SEVERITY ERROR;
 
@@ -606,7 +615,7 @@ BEGIN
 			SEVERITY ERROR;
 
 		-- Because internal state resets to KEY_IDLE.
-		ASSERT data_rd_o = x"0000000E"
+		ASSERT data_rd_o = x"00000007"
 			REPORT "ERROR: Internal PB state not reset to KEY_IDLE"
 			SEVERITY ERROR;
 
@@ -626,7 +635,7 @@ BEGIN
 			REPORT "ERROR: Spurious interrupt after second reset"
 			SEVERITY ERROR;
 
-		ASSERT data_rd_o = x"0000000E"
+		ASSERT data_rd_o = x"00000007"
 			REPORT "ERROR: PORT_PB incorrect after reset recovery"
 			SEVERITY ERROR;
 
