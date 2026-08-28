@@ -59,14 +59,24 @@ raise `RUN_TIME` at the top of the script.
 
 ### Switching benchmark
 
-Edit line 27 of `run_benchmark.do` — forward slashes, point at the folder that
-*contains* `bin/`:
+Edit the `APP` line near the top of `run_benchmark.do` — forward slashes, point
+at the folder that *contains* `bin/`. Paths are **relative to
+`SIM/RV32IMscMCU`**, the directory ModelSim runs from, which is the same
+`../../` convention `compile.do` uses to reach `DUT/` and `TB/`:
 
 ```tcl
-quietly set APP "C:/Users/<you>/Documents/Benchmark_Apps/test3/RV32IM"
+quietly set APP "../../Benchmark apps-20260827T145317Z-1-001/Benchmark apps/Interrupt-based IO/test2"
 ```
 
 Then `do run_benchmark.do` again. No need to recompile.
+
+The default is the canonical RV32IM `test1`, which runs in **276 cycles** and
+exercises `div`, `mul` and `rem`. An absolute path still works if you prefer
+one, but do not commit it — the whole point of the relative form is that the
+scripts run on someone else's machine. The same applies to `APPROOT` in
+`gen_vcd.do` and `run_gpio.do`, and to `G_ITCM_INIT_FILE` / `G_DTCM_INIT_FILE`
+in `cond_compilation_package.vhd`, which are the defaults `check_io_bus.do`
+relies on because it passes no override of its own.
 
 ### Unit testbenches
 
