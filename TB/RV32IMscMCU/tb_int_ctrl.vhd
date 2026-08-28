@@ -20,8 +20,10 @@
 --    5. INTR = GIE AND OR(IFG): low when GIE is low, low when IE is clear
 --    6. TYPE encodes the vector table, and is read only
 --    7. priority order over every adjacent pair and over all sources together
---    8. write one to clear: a store clears only the bits written as one
---    9. a store of zero to IFG clears nothing
+--    8. a store to IFG writes the value: bits stored as zero clear, bits stored as one
+--       are left alone. NOT write-one-to-clear - see the note at T8/T9 below
+--    9. a store of zero to IFG clears every flag, which is the step each supplied
+--       application performs before it enables any interrupt
 --   10. SET beats CLEAR in the same cycle - an event on the clearing cycle survives
 --   11. protocol cycle 1: bus_drive_o rises and TYPE appears with cs_i low
 --   12. protocol cycle 2: BTIFG clears automatically, KEYnIFG does not
@@ -113,6 +115,17 @@ ARCHITECTURE sim OF tb_int_ctrl IS
 	BEGIN
 		r(i) := '1';
 		RETURN r;
+	END FUNCTION;
+
+	--The byte an ISR stores to clear exactly the flags named: every bit one except those.
+	--A store to IFG writes the value the register should take, so a flag is cleared by
+	--storing a ZERO in its position - this is the lecturer's own KEYnIFG_MASK idiom,
+	--"and t3,t3,0xFFF7 ; sw t3,0(IFG)" in the supplied applications. Wrapping it in a
+	--function rather than writing NOT at every call site keeps the intent ("clear these")
+	--visible, which the bare complement does not.
+	FUNCTION clr_mask(bits : STD_LOGIC_VECTOR(7 DOWNTO 0)) RETURN STD_LOGIC_VECTOR IS
+	BEGIN
+		RETURN NOT bits;
 	END FUNCTION;
 
 BEGIN
@@ -355,17 +368,36 @@ BEGIN
 		check_bit(intr_w, '0', "T5 INTR falls again when GIE is cleared");
 
 		--===============================================================
-		-- T8/T9  Write one to clear
+		-- T8/T9  A store to IFG writes the value; it is NOT write-one-to-clear
 		--===============================================================
-		bus_write(A_IFG, x"00");
-		bus_read(A_IFG, zext(bit_of(KEY1)), "T9 a store of zero to IFG clears nothing");
+		-- These two checks previously asserted write-one-to-clear: "a store of
+		-- zero to IFG clears nothing" and "storing one to a bit clears that
+		-- flag". The course forum overturned that, and the lecturer's own
+		-- applications prove it. Every ISR in Interrupt-based IO test1, test2
+		-- and test3 clears its flag by reading IFG, ANDing with the COMPLEMENT
+		-- of its bit (KEY1IFG_MASK = 0xFFF7 in io_map.s) and storing the result
+		-- back, and every one of them opens with "sw zero,0(IFG)" to clear all
+		-- flags before enabling any interrupt. Under write-one-to-clear both
+		-- stores carry a zero in the bit concerned, clear nothing, and the ISR
+		-- never terminates. The checks below are the corrected expectations,
+		-- driven the way the applications actually drive the port.
+		--
+		-- Entering here: KEY1IFG is set and IE has only the KEY1 bit.
 
-		bus_write(A_IFG, bit_of(KEY2));
+		-- Every bit stored as one. Nothing is cleared - and nothing is set
+		-- either, because only hardware makes a source pending.
+		bus_write(A_IFG, x"FF");
+		bus_read(A_IFG, zext(bit_of(KEY1)), "T9 storing all ones to IFG clears nothing");
+
+		-- The ISR idiom aimed at KEY2, which is not pending. KEY1 is stored as
+		-- a one and must survive untouched.
+		bus_write(A_IFG, clr_mask(bit_of(KEY2)));
 		bus_read(A_IFG, zext(bit_of(KEY1)),
-				 "T8 clearing a bit that is not set leaves the others alone");
+				 "T8 a mask for a bit that is not set leaves the others alone");
 
-		bus_write(A_IFG, bit_of(KEY1));
-		bus_read(A_IFG, ZERO_BUS,  "T8 storing one to a bit clears that flag");
+		-- The ISR idiom aimed at KEY1 - literally KEY1IFG_MASK from io_map.s.
+		bus_write(A_IFG, clr_mask(bit_of(KEY1)));
+		bus_read(A_IFG, ZERO_BUS,  "T8 the ISR mask idiom clears that flag");
 		bus_read(A_TYPE, ZERO_BUS, "T8 TYPE returns to 00h once nothing is pending");
 
 		--===============================================================
@@ -376,53 +408,53 @@ BEGIN
 		-- each source alone
 		pulse(KEY3);  wait for HOLD;
 		bus_read(A_TYPE, zext(T_KEY3), "T7 KEY3 alone gives 1Ch");
-		bus_write(A_IFG, bit_of(KEY3));
+		bus_write(A_IFG, clr_mask(bit_of(KEY3)));
 
 		pulse(KEY2);  wait for HOLD;
 		bus_read(A_TYPE, zext(T_KEY2), "T7 KEY2 alone gives 18h");
-		bus_write(A_IFG, bit_of(KEY2));
+		bus_write(A_IFG, clr_mask(bit_of(KEY2)));
 
 		pulse(KEY1);  wait for HOLD;
 		bus_read(A_TYPE, zext(T_KEY1), "T7 KEY1 alone gives 14h");
-		bus_write(A_IFG, bit_of(KEY1));
+		bus_write(A_IFG, clr_mask(bit_of(KEY1)));
 
 		pulse(BT);    wait for HOLD;
 		bus_read(A_TYPE, zext(T_BT),   "T7 BT alone gives 10h");
-		bus_write(A_IFG, bit_of(BT));
+		bus_write(A_IFG, clr_mask(bit_of(BT)));
 
 		pulse(TX);    wait for HOLD;
 		bus_read(A_TYPE, zext(T_TX),   "T7 TX alone gives 0Ch");
-		bus_write(A_IFG, bit_of(TX));
+		bus_write(A_IFG, clr_mask(bit_of(TX)));
 
 		pulse(RX);    wait for HOLD;
 		bus_read(A_TYPE, zext(T_RX),   "T7 RX alone gives 08h");
-		bus_write(A_IFG, bit_of(RX));
+		bus_write(A_IFG, clr_mask(bit_of(RX)));
 
 		-- adjacent pairs: the lower TYPE always wins
 		pulse2(KEY2, KEY3); wait for HOLD;
 		bus_read(A_TYPE, zext(T_KEY2), "T7 KEY2 beats KEY3");
-		bus_write(A_IFG, x"30");
+		bus_write(A_IFG, clr_mask(x"30"));
 
 		pulse2(KEY1, KEY2); wait for HOLD;
 		bus_read(A_TYPE, zext(T_KEY1), "T7 KEY1 beats KEY2");
-		bus_write(A_IFG, x"18");
+		bus_write(A_IFG, clr_mask(x"18"));
 
 		pulse2(BT, KEY1);   wait for HOLD;
 		bus_read(A_TYPE, zext(T_BT),   "T7 BT beats KEY1");
-		bus_write(A_IFG, x"0C");
+		bus_write(A_IFG, clr_mask(x"0C"));
 
 		pulse2(TX, BT);     wait for HOLD;
 		bus_read(A_TYPE, zext(T_TX),   "T7 TX beats BT");
-		bus_write(A_IFG, x"06");
+		bus_write(A_IFG, clr_mask(x"06"));
 
 		pulse2(RX, TX);     wait for HOLD;
 		bus_read(A_TYPE, zext(T_RX),   "T7 RX beats TX");
-		bus_write(A_IFG, x"03");
+		bus_write(A_IFG, clr_mask(x"03"));
 
 		-- non adjacent, and everything at once
 		pulse2(BT, KEY3);   wait for HOLD;
 		bus_read(A_TYPE, zext(T_BT),   "T7 BT beats KEY3");
-		bus_write(A_IFG, x"24");
+		bus_write(A_IFG, clr_mask(x"24"));
 
 		-- All six at once. Driven inline rather than through pulse/pulse2 because those
 		-- take one or two sources; the leading wait is what makes the high window span a
@@ -440,7 +472,7 @@ BEGIN
 		wait for HOLD;
 		bus_read(A_IFG,  zext(x"3F"),  "T7 all six flags latched together");
 		bus_read(A_TYPE, zext(T_RX),   "T7 with everything pending, RX wins");
-		bus_write(A_IFG, x"3F");
+		bus_write(A_IFG, clr_mask(x"3F"));
 		bus_read(A_IFG, ZERO_BUS, "T7 all flags cleared");
 
 		--===============================================================
@@ -473,7 +505,7 @@ BEGIN
 		service(T_KEY2, "T12 service of KEY2IFG");
 		bus_read(A_IFG, zext(bit_of(KEY2)),
 				 "T12 KEY2IFG must survive service - software clears it");
-		bus_write(A_IFG, bit_of(KEY2));
+		bus_write(A_IFG, clr_mask(bit_of(KEY2)));
 		bus_read(A_IFG, ZERO_BUS, "T12 KEY2IFG cleared by software");
 
 		--===============================================================
@@ -506,7 +538,7 @@ BEGIN
 
 		bus_read(A_IFG, zext(bit_of(RX)),
 				 "T13 cycle 2 cleared BT and left the newly arrived RX pending");
-		bus_write(A_IFG, bit_of(RX));
+		bus_write(A_IFG, clr_mask(bit_of(RX)));
 
 		--===============================================================
 		-- T10  SET beats CLEAR in the same cycle
@@ -523,7 +555,7 @@ BEGIN
 		cs_w		<= '1';				-- and the clearing store, same cycle
 		addr_w		<= A_IFG;
 		memwr_w		<= '1';
-		data_wr_w	<= zext(bit_of(KEY1));
+		data_wr_w	<= zext(clr_mask(bit_of(KEY1)));
 		wait until falling_edge(clk_w);
 		wait for HOLD;
 		idle;
@@ -534,7 +566,7 @@ BEGIN
 
 		bus_read(A_IFG, zext(bit_of(KEY1)),
 				 "T10 an event on the clearing cycle must survive");
-		bus_write(A_IFG, bit_of(KEY1));
+		bus_write(A_IFG, clr_mask(bit_of(KEY1)));
 		bus_read(A_IFG, ZERO_BUS, "T10 flag cleared afterwards");
 
 		--===============================================================

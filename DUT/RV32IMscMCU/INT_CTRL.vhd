@@ -75,14 +75,49 @@
 --   TXIFG   note c   cleared on service or on a write to TXBUF     (bonus, tied off)
 --   KEYiIFG note d   cleared manually by software only
 --
--- WRITING TO IFG CLEARS: WRITE ONE TO CLEAR. Note d says the key flags are cleared by
--- software but not how, and the figure only shows a clr_irq input. Write-one-to-clear is
--- chosen here over "store the value you want": because IFG reads back masked by IE, a
--- read-modify-write would read zero for any source whose IE bit is clear and then clear a
--- latched event the programmer never saw. Write-one-to-clear needs no read at all - an ISR
--- clears its own flag with two instructions and cannot disturb another source. A store of
--- 0x08 to 0x202D clears KEY1IFG and nothing else. This is a design decision, not a
--- requirement of the definition; the alternative is a one-line change in CLRSW below.
+-- WRITING TO IFG CLEARS: A STORE WRITES THE VALUE THE REGISTER SHOULD TAKE. A bit stored
+-- as '0' clears that flag; a bit stored as '1' leaves it as it is. This is not a free
+-- choice - it is what the lecturer's own applications require, and an earlier version of
+-- this file got it wrong.
+--
+-- That earlier version used write-one-to-clear, on the reasoning that because IFG reads
+-- back masked by IE, a read-modify-write would read zero for any source whose IE bit is
+-- clear and then clear a latched event the programmer never saw. The reasoning is sound;
+-- the conclusion contradicted the specification. Every ISR in the supplied applications
+-- clears its flag like this (00_main.s of Interrupt-based IO test1, test2 and test3):
+--
+--     li   t2,IFG
+--     lw   t3,0(t2)          # read IFG
+--     li   t5,KEY1IFG_MASK   # 0xFFF7, an AND mask - note the polarity
+--     and  t3,t3,t5
+--     sw   t3,0(t2)          # clr KEY1IFG
+--
+-- The mask is the COMPLEMENT of the bit. Under write-one-to-clear that store carries a
+-- zero in the KEY1 position and therefore clears nothing: the flag survives, reti restores
+-- GIE, INTR is still asserted, and the CPU re-enters the same ISR for ever. Each of those
+-- applications also opens with "sw zero,0(IFG)" to clear every flag before enabling any
+-- interrupt - the step the forum describes as standard practice for exactly the
+-- reset-window race in the note below - and write-one-to-clear made that store a no-op too.
+--
+-- The residual risk the old reasoning identified is real but smaller than it looks: the
+-- read-modify-write reads back every flag whose IE bit is set, so a second ENABLED source
+-- arriving mid-ISR is preserved. Only a latched event whose IE bit is clear can be lost,
+-- and such an event cannot raise INTR anyway while it stays masked.
+--
+-- WHY A STORED '1' DOES NOT SET A FLAG. IFGx = 1 means "interrupt pending", and what makes
+-- a source pending is its hardware event, not software. Holding on a stored '1' rather
+-- than loading it keeps the register a faithful record of events and makes the ISR idiom
+-- above exact: it stores back the bits it read, and those flags stay set. No supplied
+-- application ever stores a one into IFG.
+--
+-- THE RESET WINDOW THIS ALSO FIXES. BTCTL1 resets to 0, so BTINT = "00" and BTIFG follows
+-- EQU0 = (BTCNT >= BTCL0) = (0 >= 0), which is TRUE from the instant reset releases. The
+-- edge detector in basic_timer_interface resets its history flop to '0' and therefore sees
+-- a rising edge on that level, so depending on which MCLK edge arrives first after reset
+-- deasserts, a BTIFG event can be latched here that no timer event caused. Reproduced in
+-- simulation: releasing reset at two of four phases inside one MCLK period leaves
+-- irq_q = 0x04. The application's opening "sw zero,0(IFG)" is what clears it, which is
+-- precisely why that store has to work.
 --
 -- THE PRIORITY ENCODER IS INTERNAL. Clause 6.v draws one block, and the encoder here is
 -- eight lines of chained conditions that exist only to feed the TYPE register in the same
@@ -257,10 +292,12 @@ BEGIN
 	--=======================================
 	-- Flag clearing
 	--=======================================
-	-- Write one to clear, from a store to 0x202D. See the header for why this rather than
-	-- storing the value the register should take.
+	-- A store to 0x202D writes the value the register should take: a bit stored as '0'
+	-- clears that flag, a bit stored as '1' leaves it alone. See the header - this is what
+	-- the supplied applications' "and t3,t3,MASK ; sw t3,0(IFG)" idiom and their opening
+	-- "sw zero,0(IFG)" both require, and it is NOT write-one-to-clear.
 	CLRSW: for i in 0 to NSRC-1 generate
-		clr_sw_w(i)	<= '1' WHEN (wr_w = '1' AND addr_i = SEL_IFG AND data_wr_i(i) = '1')
+		clr_sw_w(i)	<= '1' WHEN (wr_w = '1' AND addr_i = SEL_IFG AND data_wr_i(i) = '0')
 						  ELSE '0';
 	end generate;
 
