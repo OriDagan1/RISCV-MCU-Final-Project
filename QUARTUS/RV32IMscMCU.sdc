@@ -1,15 +1,20 @@
 # 50 MHz board oscillator on CLOCK_50
 create_clock -name CLOCK_50 -period 20.000 [get_ports clk_i]
 
-# MCLK and DIVCLK are PLL outputs; derive_pll_clocks picks up both
-# automatically. SMCLK is no longer a PLL output - it is a synchronous
-# branch of MCLK (smclk_w <= mclk_w in MCU.vhd), so it needs no clock
-# of its own here. BTCLK (SMCLK through BT_CLKDIV's BTSSEL divider,
-# once basic_timer is instantiated) is still a clock generated in
-# fabric and still needs its own create_generated_clock for the /2,
-# /4 and /8 taps plus set_clock_groups -exclusive between them, as
-# BT_CLKDIV.vhd's header describes - that requirement is unchanged by
-# this file and not yet added below.
+# MCLK 25, DIVCLK 200 and SMCLK 25 are PLL outputs, one PLL instance
+# each (forum rows 8 and 13), all referenced to CLOCK_50 above.
+# derive_pll_clocks picks up all three automatically.
+#
+# MCLK and SMCLK are deliberately the same frequency from separate PLLs
+# (row 16), which per row 15 is fully synchronised because both come
+# from the one 50 MHz source at an integer ratio - so no false path or
+# clock group is wanted between them here. They must stay analysed
+# together.
+#
+# BTCLK (SMCLK through BT_CLKDIV's BTSSEL divider) is a further clock
+# generated in fabric and still needs its own create_generated_clock
+# for the /2, /4 and /8 taps plus set_clock_groups -exclusive between
+# them, as BT_CLKDIV.vhd's header describes - not yet added below.
 derive_pll_clocks
 derive_clock_uncertainty
 

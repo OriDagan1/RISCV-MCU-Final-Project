@@ -19,6 +19,6 @@ package clk_config_package is
 	constant G_REFCLK_MHZ	: real := 50.0;	-- board oscillator
 	constant G_MCLK_MHZ	: real := 25.0;	-- CPU clock
 	constant G_DIVCLK_MHZ	: real := 200.0;	-- division accelerator
-	constant G_SMCLK_MHZ	: real := 25.0;	-- Basic Timer source clock - synchronous branch of MCLK, no PLL of its own
+	constant G_SMCLK_MHZ	: real := 25.0;	-- Basic Timer source clock - equal to MCLK, see row 15
 
 end clk_config_package;

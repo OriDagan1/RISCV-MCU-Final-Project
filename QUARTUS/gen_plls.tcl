@@ -1,20 +1,20 @@
 #=============================================================================
 # Advanced CPU architecture and Hardware Accelerators Lab 361-1-4693 BGU
-# Generate the two clock PLLs - MCLK and DIVCLK.
+# Generate the three clock PLLs - MCLK, DIVCLK and SMCLK.
 #
 # THIS FILE IS THE SINGLE SOURCE OF TRUTH FOR THE CLOCK FREQUENCIES.
-# To retune a clock, change one number in CLOCKS below (and, for MCLK or
-# DIVCLK, the matching entry in PLL_CLOCKS) and re-run:
+# To retune a clock, change one number in CLOCKS below and re-run:
 #
 #     QUARTUS\gen_plls.bat
 #
 # That regenerates the IP *and* rewrites clk_config_package.vhd, so the
 # simulation clock generators and the FPGA PLLs can never drift apart.
 #
-# MCLK and DIVCLK each get their own PLL instance, one IP core per clock,
-# matching the style of the PLL supplied with LAB4 (a single outclk_0 per
-# core). SMCLK does not: it is a synchronous branch of MCLK rather than a
-# PLL output - see the note on CLOCKS below.
+# Each clock gets its own PLL instance, one IP core per clock, matching the
+# style of the PLL supplied with LAB4 (a single outclk_0 per core). Forum
+# row 13 requires exactly this - "No - from three different instances of the
+# PLL module" - and row 8 that all three take the same 50 MHz base clock as
+# their reference.
 #=============================================================================
 
 package require -exact qsys 21.1
@@ -22,33 +22,30 @@ package require -exact qsys 21.1
 # ----------------------------------------------------------------------------
 # EDIT HERE:  { entity_name  output_MHz  what_it_drives }
 #
-# CLOCKS drives the VHDL constant emission at the bottom of this script and
-# lists every named clock in the tree, including SMCLK. PLL_CLOCKS below is
-# the smaller list that actually gets an altera_pll IP core.
+# This one list drives both the .qsys generation and the VHDL constant
+# emission at the bottom of the script, so an IP core and its matching VHDL
+# constant cannot get out of step.
 #
-# SMCLK stays in CLOCKS even though PLL_SMCLK is gone: Figure 1 of the task
-# definition draws SMCLK as a named branch of the clock tree, not as a PLL
-# output, so MCU.vhd now derives it synchronously from MCLK
-# (smclk_w <= mclk_w) instead of instantiating a third PLL. The constant
-# G_SMCLK_MHZ still has to come out of here, equal to G_MCLK_MHZ, because
-# BASIC_TIMER_INTERFACE.vhd carries a concurrent ASSERT that refuses to
-# elaborate a design where they differ - that assert is what makes it safe to
-# treat the CPU-to-timer register writes as an ordinary related-clock path
-# instead of a clock domain crossing. Retuning MCLK without retuning this
-# entry, or removing the entry, defeats that guard rail.
+# MCLK AND SMCLK ARE THE SAME FREQUENCY ON PURPOSE, AND MUST STAY THAT WAY.
+# Forum row 16: "in the basic case of a single-cycle CPU running at a low
+# frequency, the separation is required and necessary, but their value may be
+# identical, i.e. MCLK=SMCLK". Row 15 is what makes the equal value safe:
+# because both PLLs take the same 50 MHz physical source, an integer MCLK to
+# SMCLK ratio "guarantees full synchronisation with no need for edge
+# synchronisation". At equal frequencies the ratio is 1.
+#
+# BASIC_TIMER_INTERFACE.vhd carries a concurrent ASSERT on exactly that
+# condition: it refuses to elaborate if G_SMCLK_MHZ and G_MCLK_MHZ differ,
+# because the design carries no CDC hardware on the CPU-to-timer path and
+# needs none only while the condition holds. Retuning MCLK without retuning
+# SMCLK to match will trip that assert rather than silently build an
+# unsynchronised design.
 # ----------------------------------------------------------------------------
 set REFCLK_MHZ 50.0
 set CLOCKS {
 	{PLL_MCLK    25.0   "CPU clock"}
 	{PLL_DIVCLK  200.0  "division accelerator"}
-	{PLL_SMCLK   25.0   "Basic Timer source clock - synchronous branch of MCLK, no PLL of its own"}
-}
-
-# The clocks that actually get an altera_pll IP core. SMCLK is deliberately
-# absent - see the note on CLOCKS above.
-set PLL_CLOCKS {
-	{PLL_MCLK    25.0}
-	{PLL_DIVCLK  200.0}
+	{PLL_SMCLK   25.0   "Basic Timer source clock - equal to MCLK, see row 15"}
 }
 
 # DIVCLK is measured, not guessed. It was briefly dropped to 100 MHz on a
@@ -77,11 +74,9 @@ set DEVICE_FAMILY {Cyclone V}
 set DEVICE        {5CSXFC6D6F31C6}
 
 # ----------------------------------------------------------------------------
-# Build one .qsys per clock that actually gets a PLL. SMCLK is not in
-# PLL_CLOCKS - see the note on CLOCKS above - so no PLL_SMCLK.qsys is written
-# here any more.
+# Build one .qsys per clock
 # ----------------------------------------------------------------------------
-foreach c $PLL_CLOCKS {
+foreach c $CLOCKS {
 	set name [lindex $c 0]
 	set freq [lindex $c 1]
 
