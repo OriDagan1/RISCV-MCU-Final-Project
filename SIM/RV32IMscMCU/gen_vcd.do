@@ -23,7 +23,7 @@
 #=============================================================================
 if {![info exists VCDAPP]} { set VCDAPP RV32IM }
 
-quietly set APPROOT "C:/Users/oripa/Documents/Benchmark_Apps/Final Project Tests"
+quietly set APPROOT "../../Benchmark apps-20260827T145317Z-1-001/Benchmark apps"
 
 switch -- $VCDAPP {
 	RV32IM {

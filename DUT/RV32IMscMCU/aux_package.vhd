@@ -24,8 +24,8 @@ package aux_package is
 			CLK_CNT_WIDTH 		: integer 	:= 16;
 			LEDR_WIDTH				: integer	:= 8;
 			SW_WIDTH					: integer	:= 8;
-			ITCM_INIT_FILE		: string	:= "C:\Users\oripa\Documents\Benchmark_Apps\test3\RV32IM\bin\M9K-intel\ITCM.hex";
-			DTCM_INIT_FILE		: string	:= "C:\Users\oripa\Documents\Benchmark_Apps\test3\RV32IM\bin\M9K-intel\DTCM.hex"
+			ITCM_INIT_FILE		: string	:= G_ITCM_INIT_FILE;
+			DTCM_INIT_FILE		: string	:= G_DTCM_INIT_FILE
 		);
 		PORT(
 			--Inputs
@@ -88,7 +88,7 @@ package aux_package is
 			DATA_WORDS_NUM 		: integer 	:= G_DATA_WORDSNUM;
 			DA_WIDTH					: integer 	:= G_DA_WIDTH;
 			CLK_CNT_WIDTH 		: integer 	:= 16;
-			ITCM_INIT_FILE		: string	:= "C:\Users\oripa\Documents\Benchmark_Apps\test3\RV32IM\bin\M9K-intel\ITCM.hex"
+			ITCM_INIT_FILE		: string	:= G_ITCM_INIT_FILE
 		);
 		PORT(
 			--Inputs
@@ -190,7 +190,7 @@ package aux_package is
 			DATA_BUS_WIDTH 	: integer := 32;
 			DTCM_ADDR_WIDTH : integer := 8;
 			WORDS_NUM 			: integer := 256;
-			DTCM_INIT_FILE	: string  := "C:\Users\oripa\Documents\Benchmark_Apps\test3\RV32IM\bin\M9K-intel\DTCM.hex"
+			DTCM_INIT_FILE	: string  := G_DTCM_INIT_FILE
 		);
 		PORT(	
 			--Inputs
@@ -267,7 +267,7 @@ package aux_package is
 			PC_WIDTH 					: integer	:= 10;
 			ITCM_ADDR_WIDTH 	: integer	:= 8;
 			WORDS_NUM 				: integer	:= 256;
-			ITCM_INIT_FILE		: string	:= "C:\Users\oripa\Documents\Benchmark_Apps\test3\RV32IM\bin\M9K-intel\ITCM.hex"
+			ITCM_INIT_FILE		: string	:= G_ITCM_INIT_FILE
 		);
 		PORT(
 			--Inputs

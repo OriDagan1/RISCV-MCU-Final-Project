@@ -10,6 +10,8 @@ USE IEEE.STD_LOGIC_SIGNED.ALL;
 
 LIBRARY altera_mf;
 USE altera_mf.altera_mf_components.all;
+-- For G_DTCM_INIT_FILE, the default DTCM image. See the note on it there.
+USE work.cond_compilation_package.all;
 
 ENTITY dmemory IS
 	generic(
@@ -18,7 +20,7 @@ ENTITY dmemory IS
 		WORDS_NUM 			: integer := 256;
 		-- Benchmark image. Override from the testbench (or with vsim -g) so
 		-- switching application does not mean editing this file.
-		DTCM_INIT_FILE		: string  := "C:\Users\oripa\Documents\Benchmark_Apps\test3\RV32IM\bin\M9K-intel\DTCM.hex"
+		DTCM_INIT_FILE		: string  := G_DTCM_INIT_FILE
 	);
 	PORT(	
 		--Inputs

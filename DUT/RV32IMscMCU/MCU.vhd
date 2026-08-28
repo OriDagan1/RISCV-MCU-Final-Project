@@ -42,8 +42,8 @@ ENTITY MCU IS
 		-- carries ten of each. LEDR9, LEDR8, SW9 and SW8 stay unconnected.
 		LEDR_WIDTH			: integer	:= 8;
 		SW_WIDTH			: integer	:= 8;
-		ITCM_INIT_FILE		: string	:= "C:\Users\oripa\Documents\Benchmark_Apps\Final Project Tests\GPIO\test0\bin\M9K-intel\ITCM.hex";
-		DTCM_INIT_FILE		: string	:= "C:\Users\oripa\Documents\Benchmark_Apps\Final Project Tests\GPIO\test0\bin\M9K-intel\DTCM.hex"
+		ITCM_INIT_FILE		: string	:= G_ITCM_INIT_FILE;
+		DTCM_INIT_FILE		: string	:= G_DTCM_INIT_FILE
 	);
 	PORT(
 		--Inputs

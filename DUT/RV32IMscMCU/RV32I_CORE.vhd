@@ -25,7 +25,7 @@ ENTITY RV32I_CORE IS
 		CLK_CNT_WIDTH 		: integer 	:= 16;
 		-- ITCM image, overridable so switching application does not mean
 		-- editing IFETCH.
-		ITCM_INIT_FILE		: string	:= "C:\Users\oripa\Documents\Benchmark_Apps\test3\RV32IM\bin\M9K-intel\ITCM.hex"
+		ITCM_INIT_FILE		: string	:= G_ITCM_INIT_FILE
 	);
 	PORT(
 		--Inputs

@@ -26,9 +26,18 @@ ENTITY tb_RV32I IS
 		DA_WIDTH			: integer 	:= G_DA_WIDTH;
 		CLK_CNT_WIDTH 		: integer 	:= 16;
 		-- Benchmark under test. Override on the command line, e.g.
-		--   vsim -gITCM_INIT_FILE=<path>\ITCM.hex -gDTCM_INIT_FILE=<path>\DTCM.hex work.tb_RV32I
-		ITCM_INIT_FILE		: string	:= "C:\Users\oripa\Documents\Benchmark_Apps\test3\RV32IM\bin\M9K-intel\ITCM.hex";
-		DTCM_INIT_FILE		: string	:= "C:\Users\oripa\Documents\Benchmark_Apps\test3\RV32IM\bin\M9K-intel\DTCM.hex"
+		--   vsim -gITCM_INIT_FILE=<path>/ITCM.hex -gDTCM_INIT_FILE=<path>/DTCM.hex work.tb_RV32I
+		--
+		-- This testbench's defaults are what a plain "vsim work.tb_RV32I"
+		-- gets, and they are what check_io_bus.do runs on, since that script
+		-- drives the bus by hand and passes no override. They shadow MCU.vhd's
+		-- own defaults, so BOTH have to be right - fixing only MCU.vhd leaves
+		-- this file still pointing somewhere that does not exist.
+		--
+		-- Relative to the simulator's working directory, SIM/RV32IMscMCU. See
+		-- the note on G_ITCM_INIT_FILE in cond_compilation_package.vhd.
+		ITCM_INIT_FILE		: string	:= G_ITCM_INIT_FILE;
+		DTCM_INIT_FILE		: string	:= G_DTCM_INIT_FILE
 	);
 END tb_RV32I ;
 

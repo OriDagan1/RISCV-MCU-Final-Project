@@ -66,6 +66,35 @@ package cond_compilation_package is
 	-- the DTCM (0x0000-0x1FFF) from memory-mapped I/O (0x2000-0x3FFF).
 	-- MCU.vhd owns the decode; the core just presents the full byte address.
 	constant G_DA_WIDTH 				: integer := MA_WIDTH_TCM8KiB + 1;	-- 14
+
+	--==================================================================================================================
+	-- Default TCM images
+	--==================================================================================================================
+	-- These are the values a design elaborated with no -GITCM_INIT_FILE /
+	-- -GDTCM_INIT_FILE override gets. run_benchmark.do always overrides them
+	-- to select an application; check_io_bus.do does NOT, because it drives
+	-- the bus by hand and runs no program - so these defaults are the only
+	-- thing standing between that script and an altsyncram that cannot open
+	-- its init file, which aborts the simulation at time 0 and makes every
+	-- one of its checks read U or X.
+	--
+	-- They used to be absolute paths into one developer's home directory,
+	-- which meant check_io_bus.do failed on every other machine. The project
+	-- definition makes a clean ModelSim and Quartus build a condition of
+	-- submission and the grader runs on his own machine, so an absolute path
+	-- from this side of the handover is not usable.
+	--
+	-- PATHS ARE RELATIVE TO THE SIMULATOR'S WORKING DIRECTORY, which for every
+	-- script in this project is SIM/RV32IMscMCU - the same "../../" convention
+	-- compile.do already uses to reach DUT/ and TB/. Run ModelSim from
+	-- anywhere else and these will not resolve; that is what the overrides in
+	-- run_benchmark.do are for.
+	--
+	-- The image chosen is the canonical RV32IM test1, the one the golden
+	-- model in its own output/RARS/DTCM.h matches and the one that exercises
+	-- div, mul and rem. See README.md for the benchmark table.
+	constant G_ITCM_INIT_FILE	: string := "../../Benchmark apps-20260827T145317Z-1-001/Benchmark apps/RV32IM/test1/man_compiled/bin/M9K-intel/ITCM.hex";
+	constant G_DTCM_INIT_FILE	: string := "../../Benchmark apps-20260827T145317Z-1-001/Benchmark apps/RV32IM/test1/man_compiled/bin/M9K-intel/DTCM.hex";
 	-- G_PLL_DIV and G_PLL_MUL are gone with PLL.vhd. MCU.vhd derives MCLK
 	-- from clk_i with a toggle flip-flop, which is the same divide-by-2 the
 	-- PLL was configured for.

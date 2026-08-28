@@ -27,7 +27,7 @@
 #=============================================================================
 if {![info exists TEST]} { set TEST 0 }
 
-set APPROOT "C:/Users/oripa/Documents/Benchmark_Apps/Final Project Tests/GPIO"
+set APPROOT "../../Benchmark apps-20260827T145317Z-1-001/Benchmark apps/GPIO"
 set IMG     "$APPROOT/test$TEST/bin/M9K-intel"
 
 if {![file exists $IMG/ITCM.hex]} {
