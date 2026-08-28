@@ -1,7 +1,10 @@
 #=============================================================================
 # Advanced CPU architecture and Hardware Accelerators Lab 361-1-4693 BGU
 # Prove the memory-mapped I/O wiring inside MCU.vhd, which no unit testbench
-# reaches, and that the six BidirPin buffers never fight over io_bus_w.
+# reaches, and that the ten BidirPin buffers never fight over io_bus_w - in
+# BOTH directions, now that the bus is bidirectional per forum row 41: the CPU
+# drives it on a store through BUF_CPU and every port receives from it through
+# its own buffer's Din.
 #
 #   do compile.do
 #   do check_io_bus.do
@@ -21,6 +24,9 @@ quietly set StdArithNoWarnings 1
 quietly set NumericStdNoWarnings 1
 
 set ERRS 0
+# Real counter, not a literal: the banner at the bottom used to print a
+# hard-coded "47 checks" that no longer matched once checks were added.
+set CHECKS 0
 
 # Colours come from wave_style.do - see its header for the scheme. The "bus"
 # set leaves the CPU traces out: this script drives the bus by hand, so the
@@ -32,7 +38,8 @@ wave_look
 # Plain "set", not "quietly set": inside a proc, quietly set does not reliably
 # create the variable in this ModelSim, and reading it back fails.
 proc chk {label path radix want} {
-	global ERRS
+	global ERRS CHECKS
+	incr CHECKS
 	set got  [string tolower [examine -radix $radix $path]]
 	set want [string tolower $want]
 	if {$got eq $want} {
@@ -47,7 +54,8 @@ proc chk {label path radix want} {
 # released bus stays 'Z'. Either is a wiring bug. Checked after every step
 # rather than only at chosen instants.
 proc nocontend {where} {
-	global ERRS
+	global ERRS CHECKS
+	incr CHECKS
 	set v [string tolower [examine -radix binary /tb_RV32I/CORE/io_bus_w]]
 	if {[string match *x* $v] || [string match *z* $v] || [string match *u* $v]} {
 		echo "   FAIL  io_bus_w not resolved during $where : $v"
@@ -62,6 +70,26 @@ proc bus {addr wdata wr rd} {
 	force -freeze /tb_RV32I/CORE/bus_read_w  $rd
 	run 120 ns
 	nocontend "addr $addr wr=$wr rd=$rd"
+
+	# The data bus is bidirectional now (forum row 41): on a store the CPU's
+	# own BidirPin drives io_bus_w and each port takes its write data off that
+	# same net through its buffer's Din. Two things have to hold on EVERY store
+	# to the I/O region, and both are checked here rather than at chosen
+	# instants, because getting either wrong corrupts silently:
+	#
+	#   - BUF_NONE must be released. Every read enable is low during a store,
+	#     so without oe_cpu_w in its NOR, BUF_NONE would drive zeros against
+	#     the CPU's write data and every set bit would resolve to 'X'.
+	#   - io_bus_w must actually carry the write data, i.e. the receive half
+	#     of the bus is really connected and not just the drive half.
+	#
+	# Only for I/O-region stores: a DTCM store deliberately leaves io_bus_w
+	# alone, and there BUF_NONE is the correct driver.
+	if {$wr == 1 && [string index $addr 0] == "1"} {
+		chk "oe_cpu_w " /tb_RV32I/CORE/oe_cpu_w  bin 1
+		chk "oe_none_w" /tb_RV32I/CORE/oe_none_w bin 0
+		chk "io_bus_w " /tb_RV32I/CORE/io_bus_w  bin $wdata
+	}
 }
 
 # Reset releases at 2 us.
@@ -142,10 +170,24 @@ bus 10000000100100 00000000000000001010101111001101 1 0
 bus 10000000100100 00000000000000000000000000000000 0 1
 chk "rdata    " /tb_RV32I/CORE/bus_rdata_w hex 0000abcd
 
-echo "-- load BTCAPR 0x2028 - read only, no capture triggered since reset, still 0"
+echo "-- load BTCAPR 0x2028 - no capture and no store since reset, still 0"
 bus 10000000101000 00000000000000000000000000000000 0 1
 chk "oe_bt_w  " /tb_RV32I/CORE/oe_bt_w    bin 1
 chk "oe_none_w" /tb_RV32I/CORE/oe_none_w  bin 0
+chk "rdata    " /tb_RV32I/CORE/bus_rdata_w hex 00000000
+
+echo "-- store 0xCAFEBABE to BTCAPR 0x2028, read it back - forum row 25 makes it rw"
+# BTCAPR used to be read-only here and a store was a no-op. Row 25: "All of the
+# timer's interface registers are readable and writable, except the four high
+# bits of BTCTL2". This is the MCU-level check of that, through the real
+# decoder and the real bus, alongside tb_basic_timer_interface's unit checks.
+bus 10000000101000 11001010111111101011101010111110 1 0
+bus 10000000101000 00000000000000000000000000000000 0 1
+chk "rdata    " /tb_RV32I/CORE/bus_rdata_w hex cafebabe
+
+echo "-- store 0 back to BTCAPR, leaving the timer state clean for what follows"
+bus 10000000101000 00000000000000000000000000000000 1 0
+bus 10000000101000 00000000000000000000000000000000 0 1
 chk "rdata    " /tb_RV32I/CORE/bus_rdata_w hex 00000000
 
 echo "-- store 0x3F to IE 0x202C, read it back"
@@ -199,9 +241,9 @@ chk "LEDR_o   " /tb_RV32I/LEDR_o binary 10100101
 
 echo "================================================="
 if {$ERRS == 0} {
-	echo " I/O BUS CHECK PASSED - 47 checks, io_bus_w never X, Z or U"
+	echo " I/O BUS CHECK PASSED - $CHECKS checks, io_bus_w never X, Z or U"
 } else {
-	echo " I/O BUS CHECK FAILED : $ERRS errors"
+	echo " I/O BUS CHECK FAILED : $ERRS errors out of $CHECKS checks"
 }
 echo "================================================="
 wave zoom full

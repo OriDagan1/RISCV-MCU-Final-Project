@@ -269,15 +269,37 @@ ARCHITECTURE structure OF MCU IS
 	SIGNAL gie_w			: STD_LOGIC;
 	SIGNAL inta_n_w			: STD_LOGIC;
 
-	-- The shared I/O read bus of Figure 5. Every port reaches it through a
-	-- BidirPin, so this signal genuinely has nine drivers (LEDR, the three
-	-- HEX pairs, SW, PB, the Basic Timer group, the interrupt controller and
+	-- The shared I/O data bus of Figure 5 - now bidirectional, as forum row 41
+	-- requires. Every port reaches it through a BidirPin, and so does the CPU,
+	-- so this signal genuinely has TEN drivers (the CPU, LEDR, the three HEX
+	-- pairs, SW, PB, the Basic Timer group, the interrupt controller and
 	-- BUF_NONE) and relies on std_logic resolution; it must not be assigned
 	-- anywhere else.
+	--
+	-- Exactly one of the ten drives at any instant. Nine of the enables are a
+	-- read enable, the tenth is the CPU's write enable, they are mutually
+	-- exclusive, and BUF_NONE covers the case where none of the other nine is
+	-- asserted - which is why oe_cpu_w had to join that NOR.
 	SIGNAL io_bus_w			: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+
+	-- Write data as each port receives it: the Din side of that port's own
+	-- BidirPin, i.e. the resolved value of io_bus_w. This is the receive half
+	-- of the bidirectional bus forum row 41 requires - see the note at the
+	-- buffers below. PORT_SW and PORT_PB are read-only and have no such
+	-- signal; nor does the DTCM, which stays on bus_wdata_w.
+	SIGNAL din_ledr_w		: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+	SIGNAL din_hex0_1_w		: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+	SIGNAL din_hex2_3_w		: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+	SIGNAL din_hex4_5_w		: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+	SIGNAL din_bt_w			: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+	SIGNAL din_ic_w			: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
 
 	-- Output enables, one per tri-state buffer. Exactly one is '1' at any
 	-- instant: the chip selects are one-hot, and oe_none_w is their NOR.
+	-- oe_cpu_w is the CPU's, asserted during a store to the I/O region, and it
+	-- is in that NOR too - see the note there for why leaving it out is the
+	-- one way to get this bus badly wrong.
+	SIGNAL oe_cpu_w			: STD_LOGIC;
 	SIGNAL oe_ledr_w		: STD_LOGIC;
 	SIGNAL oe_hex0_1_w		: STD_LOGIC;
 	SIGNAL oe_hex2_3_w		: STD_LOGIC;
@@ -584,7 +606,7 @@ BEGIN
 		cs_i				=> cs_ledr_w,
 		MemRead_ctrl_i		=> bus_read_w,
 		MemWrite_ctrl_i		=> bus_write_w,
-		data_wr_i			=> bus_wdata_w,
+		data_wr_i			=> din_ledr_w,
 
 		--Outputs
 		data_rd_o			=> rd_ledr_w,
@@ -621,7 +643,7 @@ BEGIN
 		sel_i				=> bus_addr_w(0),
 		MemRead_ctrl_i		=> bus_read_w,
 		MemWrite_ctrl_i		=> bus_write_w,
-		data_wr_i			=> bus_wdata_w,
+		data_wr_i			=> din_hex0_1_w,
 
 		--Outputs
 		data_rd_o			=> rd_hex0_1_w,
@@ -641,7 +663,7 @@ BEGIN
 		sel_i				=> bus_addr_w(0),
 		MemRead_ctrl_i		=> bus_read_w,
 		MemWrite_ctrl_i		=> bus_write_w,
-		data_wr_i			=> bus_wdata_w,
+		data_wr_i			=> din_hex2_3_w,
 
 		--Outputs
 		data_rd_o			=> rd_hex2_3_w,
@@ -661,7 +683,7 @@ BEGIN
 		sel_i				=> bus_addr_w(0),
 		MemRead_ctrl_i		=> bus_read_w,
 		MemWrite_ctrl_i		=> bus_write_w,
-		data_wr_i			=> bus_wdata_w,
+		data_wr_i			=> din_hex4_5_w,
 
 		--Outputs
 		data_rd_o			=> rd_hex4_5_w,
@@ -721,7 +743,7 @@ BEGIN
 		sel_i				=> bus_addr_w(0),
 		MemRead_ctrl_i		=> bus_read_w,
 		MemWrite_ctrl_i		=> bus_write_w,
-		data_wr_i			=> bus_wdata_w,
+		data_wr_i			=> din_bt_w,
 		btcapr_i			=> btcapr_w,
 		capevt_i			=> capevt_w,
 		btifg_i				=> btifg_w,
@@ -792,7 +814,7 @@ BEGIN
 		addr_i				=> bus_addr_w(1 DOWNTO 0),
 		MemRead_ctrl_i		=> bus_read_w,
 		MemWrite_ctrl_i		=> bus_write_w,
-		data_wr_i			=> bus_wdata_w,
+		data_wr_i			=> din_ic_w,
 		is_rx_i				=> '0',
 		is_tx_i				=> '0',
 		is_bt_i				=> bt_irq_w,
@@ -830,11 +852,35 @@ BEGIN
 	-- Dout while en = '1' and releases it to 'Z' otherwise. One instance per
 	-- device, all sharing io_bus_w, is the figure drawn literally.
 	--
-	-- Only the port -> CPU direction is built here. BidirPin also brings the
-	-- bus back out on Din, which is what a truly bidirectional data bus would
-	-- use to deliver store data, but this core has separate write and read
-	-- buses (bus_wdata_w and bus_rdata_w out of RV32I_CORE), so store data
-	-- reaches the ports on bus_wdata_w and every Din is left open.
+	-- BOTH DIRECTIONS ARE BUILT HERE. Forum row 41 asks whether the data bus
+	-- may be two separate read and write paths or must use BidirPin, and
+	-- answers "You must use a bi-directional BUS based on BidirPin". Figure 5
+	-- agrees: Data<7...0> is one net that both feeds the D-latches on a write
+	-- and is driven by the tri-state buffers on a read, and Figure 1 draws the
+	-- Data-BUS with arrows both ways. An earlier version of this file used
+	-- BidirPin in the read direction only, tied every Din to OPEN, and carried
+	-- store data on a separate net - exactly the arrangement row 41 rejects.
+	--
+	-- BidirPin is two lines, and the second one is the half that was unused:
+	--
+	--     Din   <= IOpin;                                  -- ungated
+	--     IOpin <= Dout when(en='1') else (others => 'Z');  -- gated
+	--
+	-- Din is an ungated copy of the resolved bus, so it is the receive half of
+	-- the buffer. Each writable port now takes its data_wr_i from its OWN
+	-- buffer's Din rather than from a separate write net, and BUF_CPU below
+	-- drives the bus from the CPU side during an I/O store. Reading and
+	-- writing therefore share one net, which is the figure drawn literally.
+	-- It costs no hardware: Din <= IOpin is a wire.
+	--
+	-- BUF_SW and BUF_PB keep Din => OPEN. PORT_SW and PORT_PB are read-only
+	-- and have no data_wr_i port at all, so there is nothing to receive.
+	--
+	-- THE DTCM IS DELIBERATELY NOT ON THIS BUS. It keeps taking bus_wdata_w
+	-- directly. Figure 5 draws the tri-state buffers around the I/O ports, not
+	-- around the memory, and oe_cpu_w below is gated with io_sel_w so a DTCM
+	-- store never drives io_bus_w at all. Whether row 41 also reaches the DTCM
+	-- path is a separate question and is not decided here.
 	--
 	-- Cyclone V has no internal tri-state. Quartus resolves these buffers
 	-- into a multiplexer during synthesis, which is why the ports also drive
@@ -845,6 +891,21 @@ BEGIN
 	oe_hex4_5_w	<= cs_hex4_5_w	AND bus_read_w;
 	oe_sw_w		<= cs_sw_w		AND bus_read_w;
 	oe_pb_w		<= cs_pb_w		AND bus_read_w;
+
+	-- The CPU's own output enable: it drives the shared bus during a store to
+	-- the I/O region, and only then. io_sel_w keeps DTCM stores off this bus
+	-- entirely.
+	--
+	-- This term is one-hot against all the read enables above without needing
+	-- to say so explicitly: every one of them contains bus_read_w and this one
+	-- contains bus_write_w, and the core never asserts both. MemRead_ctrl_o is
+	-- mem_read_w OR int_mem_read_w and MemWrite_ctrl_o is mem_write_gated_w;
+	-- an instruction is a load or a store, never both, and during interrupt
+	-- service cycle 1 int_hold_o gates mem_write_gated_w off while cycle 2
+	-- asserts only int_mem_read_w. oe_ic_w, the one enable that can rise
+	-- without bus_read_w (protocol cycle 1), rises only while int_hold_o is
+	-- holding the write enable low.
+	oe_cpu_w	<= bus_write_w	AND io_sel_w;
 
 	-- One output enable for the whole Basic Timer register group: the four
 	-- chip selects are already mutually exclusive out of PERIPH_AddressDecoder,
@@ -870,23 +931,42 @@ BEGIN
 	-- oe_pb_w, oe_bt_w and oe_ic_w all have to appear in this NOR: leaving
 	-- any one out would let BUF_NONE and that port's buffer both drive
 	-- io_bus_w during a load from its address range, resolving to 'X'.
-	oe_none_w	<= NOT (oe_ledr_w OR oe_hex0_1_w OR oe_hex2_3_w OR oe_hex4_5_w OR oe_sw_w OR oe_pb_w OR oe_bt_w OR oe_ic_w);
+	--
+	-- AND SO DOES oe_cpu_w, WHICH IS THE WHOLE RISK IN MAKING THIS BUS
+	-- BIDIRECTIONAL. Every other term in this NOR contains bus_read_w, so
+	-- during a STORE they are all low and, without the oe_cpu_w term, this
+	-- expression would be '1' - BUF_NONE would drive 32 zeros into io_bus_w at
+	-- the same instant BUF_CPU drives the write data. std_logic resolution of
+	-- '0' against '1' is 'X', so every set bit of every store would reach the
+	-- peripheral as 'X' and be latched as garbage. It produces no compile
+	-- error and no elaboration warning; the only way to see it is to look at
+	-- the bus during a store, which is why check_io_bus.do now asserts
+	-- oe_none_w = 0 and the expected data on io_bus_w for every store it makes.
+	oe_none_w	<= NOT (oe_ledr_w OR oe_hex0_1_w OR oe_hex2_3_w OR oe_hex4_5_w OR oe_sw_w OR oe_pb_w OR oe_bt_w OR oe_ic_w OR oe_cpu_w);
+
+	-- The CPU's buffer, and the reason this bus is bidirectional at all: it is
+	-- what puts store data onto io_bus_w so the ports can take it off the same
+	-- net they drive on a read. Din is OPEN here because the CPU's read path
+	-- is the bus_rdata_w multiplexer below, not this buffer.
+	BUF_CPU: BidirPin
+	generic map(width => DATA_BUS_WIDTH)
+	PORT MAP (Dout => bus_wdata_w,	en => oe_cpu_w,		Din => OPEN, IOpin => io_bus_w);
 
 	BUF_LEDR: BidirPin
 	generic map(width => DATA_BUS_WIDTH)
-	PORT MAP (Dout => rd_ledr_w,	en => oe_ledr_w,	Din => OPEN, IOpin => io_bus_w);
+	PORT MAP (Dout => rd_ledr_w,	en => oe_ledr_w,	Din => din_ledr_w, IOpin => io_bus_w);
 
 	BUF_HEX01: BidirPin
 	generic map(width => DATA_BUS_WIDTH)
-	PORT MAP (Dout => rd_hex0_1_w,	en => oe_hex0_1_w,	Din => OPEN, IOpin => io_bus_w);
+	PORT MAP (Dout => rd_hex0_1_w,	en => oe_hex0_1_w,	Din => din_hex0_1_w, IOpin => io_bus_w);
 
 	BUF_HEX23: BidirPin
 	generic map(width => DATA_BUS_WIDTH)
-	PORT MAP (Dout => rd_hex2_3_w,	en => oe_hex2_3_w,	Din => OPEN, IOpin => io_bus_w);
+	PORT MAP (Dout => rd_hex2_3_w,	en => oe_hex2_3_w,	Din => din_hex2_3_w, IOpin => io_bus_w);
 
 	BUF_HEX45: BidirPin
 	generic map(width => DATA_BUS_WIDTH)
-	PORT MAP (Dout => rd_hex4_5_w,	en => oe_hex4_5_w,	Din => OPEN, IOpin => io_bus_w);
+	PORT MAP (Dout => rd_hex4_5_w,	en => oe_hex4_5_w,	Din => din_hex4_5_w, IOpin => io_bus_w);
 
 	BUF_SW: BidirPin
 	generic map(width => DATA_BUS_WIDTH)
@@ -898,11 +978,11 @@ BEGIN
 
 	BUF_BT: BidirPin
 	generic map(width => DATA_BUS_WIDTH)
-	PORT MAP (Dout => rd_bt_w,		en => oe_bt_w,		Din => OPEN, IOpin => io_bus_w);
+	PORT MAP (Dout => rd_bt_w,		en => oe_bt_w,		Din => din_bt_w, IOpin => io_bus_w);
 
 	BUF_IC: BidirPin
 	generic map(width => DATA_BUS_WIDTH)
-	PORT MAP (Dout => rd_ic_w,		en => oe_ic_w,		Din => OPEN, IOpin => io_bus_w);
+	PORT MAP (Dout => rd_ic_w,		en => oe_ic_w,		Din => din_ic_w, IOpin => io_bus_w);
 
 	io_park_w	<= (OTHERS => '0');
 

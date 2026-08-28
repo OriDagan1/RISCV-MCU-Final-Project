@@ -100,6 +100,12 @@ ARCHITECTURE sim OF tb_basic_timer_interface IS
 
 	CONSTANT ZERO_BUS		: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0) := (OTHERS => '0');
 
+	-- A named constant rather than an inline (btcapr_w'range => '1') aggregate:
+	-- passed to a procedure whose parameter is unconstrained, that aggregate
+	-- leaves the index direction ambiguous and vcom warns (1514). Same reason
+	-- INT_CTRL.vhd declares PAD_HI instead of inlining its aggregate.
+	CONSTANT ONES_N			: STD_LOGIC_VECTOR(N-1 DOWNTO 0) := (OTHERS => '1');
+
 	--=======================================
 	-- Expected read value, built from the register map and not from the DUT
 	--=======================================
@@ -498,8 +504,8 @@ BEGIN
 				 "T13 a capture after a store overwrites the stored value");
 
 		-- Full-width patterns through both paths.
-		capture((btcapr_w'range => '1'));
-		bus_read(R_BTCAPR, zext_word((btcapr_w'range => '1')),
+		capture(ONES_N);
+		bus_read(R_BTCAPR, zext_word(ONES_N),
 				 "T13 BTCAPR captures all ones unchanged");
 		bus_write(R_BTCAPR, ZERO_BUS);
 		bus_read(R_BTCAPR, ZERO_BUS, "T12 BTCAPR stores all zeros unchanged");
