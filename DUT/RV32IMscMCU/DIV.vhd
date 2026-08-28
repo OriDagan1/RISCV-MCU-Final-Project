@@ -15,7 +15,23 @@
 --
 -- Division by zero needs no special case: the algorithm naturally yields
 -- Quotient = all ones and Residue = Dividend, which is exactly what the
--- RISC-V spec requires of divu/remu.
+-- RISC-V spec requires of divu/remu. Measured, not assumed - with
+-- divisor_q = 0 the subtractor never borrows, so Non_neg is '1' on all N
+-- steps and a '1' shifts into the quotient on each of them.
+--
+-- WHERE FIGURE 9'S DIVRST FUNCTION ACTUALLY LIVES. The forum defines DIVRST
+-- as the line that initialises this core's internal registers - the Quotient
+-- register and the {Residue,Dividend} shift register holding the Dividend and
+-- Divisor - at the start of each division, once per div/divu/rem/remu. That
+-- initialisation is the start_w load branch below, NOT the DIVRST port: the
+-- port is the ordinary asynchronous system reset, and DIV_ACCEL.vhd ties it
+-- to rst_i.
+--
+-- The two cannot be merged. DIVRST arrives here as an asynchronous CLEAR, so
+-- pulsing it once per division would zero shreg_q - including the dividend
+-- that the same pulse is supposed to load into it - and would race the load
+-- branch. Loading and clearing are opposite operations on the same registers;
+-- start_w is the load, DIVRST is the clear, and the divider needs both.
 --
 -- CDC note: Dividend, Divisor and DIVENA cross from the MCLK domain. Only
 -- DIVENA needs synchronizing (Fig.10) - the operand buses are captured by
@@ -80,7 +96,7 @@ ARCHITECTURE div OF divider IS
 
 BEGIN
 	--=======================================
-	-- Start pulse
+	-- Start pulse - this is Fig.9's DIVRST, see the header
 	--=======================================
 	-- DIVENA arrives from the slow MCLK domain and stays high for several
 	-- DIVCLK cycles, so it is edge-detected. Without this the divider would

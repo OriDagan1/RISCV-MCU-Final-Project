@@ -123,6 +123,13 @@ BEGIN
 	--=======================================
 	-- Divider core
 	--=======================================
+	-- DIVRST is the system reset here, deliberately, and is NOT the per-division
+	-- initialisation that Fig.9 gives that name to. The forum defines DIVRST as
+	-- the line that loads the divider's Quotient register and {Residue,Dividend}
+	-- shift register at the start of every div/divu/rem/remu; inside DIV.vhd that
+	-- is the start_w load branch, driven off the DIVENA edge this wrapper raises
+	-- once per division. See DIV.vhd's header for why the load and the clear
+	-- cannot share one line.
 	DIV: divider
 	generic map(
 		N			=> N
