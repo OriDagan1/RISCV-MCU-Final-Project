@@ -146,6 +146,30 @@ BEGIN
 	-----------------------------------------------------------------------------------------
 	STIMULUS:
 	PROCESS
+
+		-----------------------------------------------------------------------------------------
+		-- Check counting, in the form tb_int_ctrl.vhd uses.
+		--
+		-- This testbench used to be 51 bare "ASSERT ... SEVERITY ERROR" statements followed by
+		-- an UNCONDITIONAL "ALL GPIO_PB_Interface TESTS PASSED" banner. The banner was printed
+		-- whether or not anything had failed, so the transcript said PASSED while ModelSim's
+		-- own summary line said "Errors: 2" - which is exactly how it behaved when the forum
+		-- audit changed the PORT_PB bit layout and two expectations went stale. A banner that
+		-- has never been observed to fail is not evidence, so every assertion now goes through
+		-- check() and the banner is gated on the count.
+		-----------------------------------------------------------------------------------------
+		VARIABLE checks_v	: natural := 0;
+		VARIABLE errors_v	: natural := 0;
+
+		PROCEDURE check(cond : BOOLEAN; msg : STRING) IS
+		BEGIN
+			checks_v := checks_v + 1;
+			IF NOT cond THEN
+				errors_v := errors_v + 1;
+				REPORT "FAIL: " & msg SEVERITY ERROR;
+			END IF;
+		END PROCEDURE;
+
 	BEGIN
 
 		-------------------------------------------------------------------------------------
@@ -161,21 +185,17 @@ BEGIN
 
 		WAIT FOR CLK_PERIOD / 2;
 
-		ASSERT key1_irq_o = '0'
-			REPORT "ERROR: KEY1 IRQ active during reset"
-			SEVERITY ERROR;
+		check(key1_irq_o = '0',
+			  "ERROR: KEY1 IRQ active during reset");
 
-		ASSERT key2_irq_o = '0'
-			REPORT "ERROR: KEY2 IRQ active during reset"
-			SEVERITY ERROR;
+		check(key2_irq_o = '0',
+			  "ERROR: KEY2 IRQ active during reset");
 
-		ASSERT key3_irq_o = '0'
-			REPORT "ERROR: KEY3 IRQ active during reset"
-			SEVERITY ERROR;
+		check(key3_irq_o = '0',
+			  "ERROR: KEY3 IRQ active during reset");
 
-		ASSERT data_rd_o = x"00000000"
-			REPORT "ERROR: data_rd_o must be zero when device is not selected"
-			SEVERITY ERROR;
+		check(data_rd_o = x"00000000",
+			  "ERROR: data_rd_o must be zero when device is not selected");
 
 
 		-------------------------------------------------------------------------------------
@@ -187,9 +207,8 @@ BEGIN
 
 		WAIT FOR 1 ns;
 
-		ASSERT data_rd_o = x"00000007"
-			REPORT "ERROR: PORT_PB reset/idle read should be 0x00000007"
-			SEVERITY ERROR;
+		check(data_rd_o = x"00000007",
+			  "ERROR: PORT_PB reset/idle read should be 0x00000007");
 
 
 		-------------------------------------------------------------------------------------
@@ -200,11 +219,10 @@ BEGIN
 
 		wait_rising_edges(4);
 
-		ASSERT key1_irq_o = '0' AND
+		check(key1_irq_o = '0' AND
 			   key2_irq_o = '0' AND
-			   key3_irq_o = '0'
-			REPORT "ERROR: Spurious IRQ generated after reset"
-			SEVERITY ERROR;
+			   key3_irq_o = '0',
+			  "ERROR: Spurious IRQ generated after reset");
 
 
 		-------------------------------------------------------------------------------------
@@ -217,9 +235,8 @@ BEGIN
 
 		WAIT FOR 1 ns;
 
-		ASSERT data_rd_o = x"00000000"
-			REPORT "ERROR: data_rd_o active while cs_i = 0"
-			SEVERITY ERROR;
+		check(data_rd_o = x"00000000",
+			  "ERROR: data_rd_o active while cs_i = 0");
 
 
 		cs_i			<= '1';
@@ -227,9 +244,8 @@ BEGIN
 
 		WAIT FOR 1 ns;
 
-		ASSERT data_rd_o = x"00000000"
-			REPORT "ERROR: data_rd_o active while MemRead_ctrl_i = 0"
-			SEVERITY ERROR;
+		check(data_rd_o = x"00000000",
+			  "ERROR: data_rd_o active while MemRead_ctrl_i = 0");
 
 
 		cs_i			<= '1';
@@ -237,9 +253,8 @@ BEGIN
 
 		WAIT FOR 1 ns;
 
-		ASSERT data_rd_o = x"00000007"
-			REPORT "ERROR: Idle KEY value read incorrectly"
-			SEVERITY ERROR;
+		check(data_rd_o = x"00000007",
+			  "ERROR: Idle KEY value read incorrectly");
 
 
 		-------------------------------------------------------------------------------------
@@ -258,30 +273,26 @@ BEGIN
 		-- First rising edge: key_meta_q sees 0.
 		wait_rising_edges(1);
 
-		ASSERT key1_irq_o = '0'
-			REPORT "ERROR: KEY1 IRQ generated at synchronizer stage 1"
-			SEVERITY ERROR;
+		check(key1_irq_o = '0',
+			  "ERROR: KEY1 IRQ generated at synchronizer stage 1");
 
 
 		-- Second rising edge: key_sync_q sees 0.
 		wait_rising_edges(1);
 
-		ASSERT key1_irq_o = '0'
-			REPORT "ERROR: KEY1 press (1->0) incorrectly generated IRQ"
-			SEVERITY ERROR;
+		check(key1_irq_o = '0',
+			  "ERROR: KEY1 press (1->0) incorrectly generated IRQ");
 
 
 		-- Third edge updates previous state.
 		wait_rising_edges(1);
 
-		ASSERT key1_irq_o = '0'
-			REPORT "ERROR: KEY1 IRQ generated while key remains pressed"
-			SEVERITY ERROR;
+		check(key1_irq_o = '0',
+			  "ERROR: KEY1 IRQ generated while key remains pressed");
 
 
-		ASSERT data_rd_o = x"00000006"
-			REPORT "ERROR: KEY1 pressed read value should be 0x00000006"
-			SEVERITY ERROR;
+		check(data_rd_o = x"00000006",
+			  "ERROR: KEY1 pressed read value should be 0x00000006");
 
 
 		-------------------------------------------------------------------------------------
@@ -293,9 +304,8 @@ BEGIN
 
 			wait_rising_edges(1);
 
-			ASSERT key1_irq_o = '0'
-				REPORT "ERROR: Repeated KEY1 IRQ while key is held down"
-				SEVERITY ERROR;
+			check(key1_irq_o = '0',
+			  "ERROR: Repeated KEY1 IRQ while key is held down");
 
 		END LOOP;
 
@@ -315,9 +325,8 @@ BEGIN
 		-- Stage 1
 		wait_rising_edges(1);
 
-		ASSERT key1_irq_o = '0'
-			REPORT "ERROR: KEY1 IRQ appeared too early"
-			SEVERITY ERROR;
+		check(key1_irq_o = '0',
+			  "ERROR: KEY1 IRQ appeared too early");
 
 
 		-- Stage 2: synchronized signal becomes 1.
@@ -325,25 +334,21 @@ BEGIN
 		-- IRQ must now be high.
 		wait_rising_edges(1);
 
-		ASSERT key1_irq_o = '1'
-			REPORT "ERROR: KEY1 release did not generate IRQ"
-			SEVERITY ERROR;
+		check(key1_irq_o = '1',
+			  "ERROR: KEY1 release did not generate IRQ");
 
-		ASSERT key2_irq_o = '0' AND key3_irq_o = '0'
-			REPORT "ERROR: KEY1 release affected another IRQ output"
-			SEVERITY ERROR;
+		check(key2_irq_o = '0' AND key3_irq_o = '0',
+			  "ERROR: KEY1 release affected another IRQ output");
 
-		ASSERT data_rd_o = x"00000007"
-			REPORT "ERROR: PORT_PB did not update after KEY1 release"
-			SEVERITY ERROR;
+		check(data_rd_o = x"00000007",
+			  "ERROR: PORT_PB did not update after KEY1 release");
 
 
 		-- One clock later previous catches up.
 		wait_rising_edges(1);
 
-		ASSERT key1_irq_o = '0'
-			REPORT "ERROR: KEY1 IRQ pulse lasted longer than one MCLK cycle"
-			SEVERITY ERROR;
+		check(key1_irq_o = '0',
+			  "ERROR: KEY1 IRQ pulse lasted longer than one MCLK cycle");
 
 
 		-------------------------------------------------------------------------------------
@@ -360,9 +365,8 @@ BEGIN
 
 		wait_rising_edges(3);
 
-		ASSERT key2_irq_o = '0'
-			REPORT "ERROR: KEY2 press generated IRQ"
-			SEVERITY ERROR;
+		check(key2_irq_o = '0',
+			  "ERROR: KEY2 press generated IRQ");
 
 
 		-- Release KEY2 while CPU is not reading PORT_PB.
@@ -371,25 +375,21 @@ BEGIN
 
 		wait_rising_edges(1);
 
-		ASSERT key2_irq_o = '0'
-			REPORT "ERROR: KEY2 IRQ appeared too early"
-			SEVERITY ERROR;
+		check(key2_irq_o = '0',
+			  "ERROR: KEY2 IRQ appeared too early");
 
 		wait_rising_edges(1);
 
-		ASSERT key2_irq_o = '1'
-			REPORT "ERROR: KEY2 release did not generate IRQ while cs_i/read were disabled"
-			SEVERITY ERROR;
+		check(key2_irq_o = '1',
+			  "ERROR: KEY2 release did not generate IRQ while cs_i/read were disabled");
 
-		ASSERT data_rd_o = x"00000000"
-			REPORT "ERROR: data_rd_o active even though PB port was not selected"
-			SEVERITY ERROR;
+		check(data_rd_o = x"00000000",
+			  "ERROR: data_rd_o active even though PB port was not selected");
 
 		wait_rising_edges(1);
 
-		ASSERT key2_irq_o = '0'
-			REPORT "ERROR: KEY2 IRQ lasted longer than one cycle"
-			SEVERITY ERROR;
+		check(key2_irq_o = '0',
+			  "ERROR: KEY2 IRQ lasted longer than one cycle");
 
 
 		-------------------------------------------------------------------------------------
@@ -401,33 +401,28 @@ BEGIN
 
 		wait_rising_edges(3);
 
-		ASSERT key3_irq_o = '0'
-			REPORT "ERROR: KEY3 press generated IRQ"
-			SEVERITY ERROR;
+		check(key3_irq_o = '0',
+			  "ERROR: KEY3 press generated IRQ");
 
 		KEY_i(3) <= '1';
 
 		wait_rising_edges(1);
 
-		ASSERT key3_irq_o = '0'
-			REPORT "ERROR: KEY3 IRQ appeared too early"
-			SEVERITY ERROR;
+		check(key3_irq_o = '0',
+			  "ERROR: KEY3 IRQ appeared too early");
 
 		wait_rising_edges(1);
 
-		ASSERT key3_irq_o = '1'
-			REPORT "ERROR: KEY3 release did not generate IRQ"
-			SEVERITY ERROR;
+		check(key3_irq_o = '1',
+			  "ERROR: KEY3 release did not generate IRQ");
 
-		ASSERT key1_irq_o = '0' AND key2_irq_o = '0'
-			REPORT "ERROR: KEY3 release affected KEY1/KEY2 IRQ"
-			SEVERITY ERROR;
+		check(key1_irq_o = '0' AND key2_irq_o = '0',
+			  "ERROR: KEY3 release affected KEY1/KEY2 IRQ");
 
 		wait_rising_edges(1);
 
-		ASSERT key3_irq_o = '0'
-			REPORT "ERROR: KEY3 IRQ lasted longer than one clock"
-			SEVERITY ERROR;
+		check(key3_irq_o = '0',
+			  "ERROR: KEY3 IRQ lasted longer than one clock");
 
 
 		-------------------------------------------------------------------------------------
@@ -441,9 +436,8 @@ BEGIN
 
 		wait_rising_edges(3);
 
-		ASSERT key1_irq_o = '0' AND key2_irq_o = '0'
-			REPORT "ERROR: Simultaneous press generated IRQ"
-			SEVERITY ERROR;
+		check(key1_irq_o = '0' AND key2_irq_o = '0',
+			  "ERROR: Simultaneous press generated IRQ");
 
 
 		-- Release both together.
@@ -452,27 +446,23 @@ BEGIN
 
 		wait_rising_edges(1);
 
-		ASSERT key1_irq_o = '0' AND key2_irq_o = '0'
-			REPORT "ERROR: Simultaneous IRQ appeared before synchronization completed"
-			SEVERITY ERROR;
+		check(key1_irq_o = '0' AND key2_irq_o = '0',
+			  "ERROR: Simultaneous IRQ appeared before synchronization completed");
 
 		wait_rising_edges(1);
 
-		ASSERT key1_irq_o = '1' AND key2_irq_o = '1'
-			REPORT "ERROR: Simultaneous KEY1+KEY2 release did not generate both IRQ pulses"
-			SEVERITY ERROR;
+		check(key1_irq_o = '1' AND key2_irq_o = '1',
+			  "ERROR: Simultaneous KEY1+KEY2 release did not generate both IRQ pulses");
 
-		ASSERT key3_irq_o = '0'
-			REPORT "ERROR: KEY3 IRQ unexpectedly active"
-			SEVERITY ERROR;
+		check(key3_irq_o = '0',
+			  "ERROR: KEY3 IRQ unexpectedly active");
 
 		wait_rising_edges(1);
 
-		ASSERT key1_irq_o = '0' AND
+		check(key1_irq_o = '0' AND
 			   key2_irq_o = '0' AND
-			   key3_irq_o = '0'
-			REPORT "ERROR: Simultaneous IRQ pulse lasted longer than one clock"
-			SEVERITY ERROR;
+			   key3_irq_o = '0',
+			  "ERROR: Simultaneous IRQ pulse lasted longer than one clock");
 
 
 		-------------------------------------------------------------------------------------
@@ -488,9 +478,8 @@ BEGIN
 
 		wait_rising_edges(3);
 
-		ASSERT data_rd_o = x"00000000"
-			REPORT "ERROR: KEY=000 read incorrectly"
-			SEVERITY ERROR;
+		check(data_rd_o = x"00000000",
+			  "ERROR: KEY=000 read incorrectly");
 
 
 		-- 001 -> bit1 only.
@@ -498,9 +487,8 @@ BEGIN
 
 		wait_rising_edges(2);
 
-		ASSERT data_rd_o = x"00000001"
-			REPORT "ERROR: KEY=001 should read as 0x00000001"
-			SEVERITY ERROR;
+		check(data_rd_o = x"00000001",
+			  "ERROR: KEY=001 should read as 0x00000001");
 
 		wait_rising_edges(1);
 
@@ -510,9 +498,8 @@ BEGIN
 
 		wait_rising_edges(2);
 
-		ASSERT data_rd_o = x"00000002"
-			REPORT "ERROR: KEY=010 should read as 0x00000002"
-			SEVERITY ERROR;
+		check(data_rd_o = x"00000002",
+			  "ERROR: KEY=010 should read as 0x00000002");
 
 		wait_rising_edges(1);
 
@@ -522,9 +509,8 @@ BEGIN
 
 		wait_rising_edges(2);
 
-		ASSERT data_rd_o = x"00000004"
-			REPORT "ERROR: KEY=100 should read as 0x00000004"
-			SEVERITY ERROR;
+		check(data_rd_o = x"00000004",
+			  "ERROR: KEY=100 should read as 0x00000004");
 
 		wait_rising_edges(1);
 
@@ -534,9 +520,8 @@ BEGIN
 
 		wait_rising_edges(2);
 
-		ASSERT data_rd_o = x"00000007"
-			REPORT "ERROR: KEY=111 should read as 0x00000007"
-			SEVERITY ERROR;
+		check(data_rd_o = x"00000007",
+			  "ERROR: KEY=111 should read as 0x00000007");
 
 		wait_rising_edges(1);
 
@@ -556,15 +541,13 @@ BEGIN
 
 		wait_rising_edges(2);
 
-		ASSERT key1_irq_o = '1'
-			REPORT "ERROR: First repeated KEY1 release did not generate IRQ"
-			SEVERITY ERROR;
+		check(key1_irq_o = '1',
+			  "ERROR: First repeated KEY1 release did not generate IRQ");
 
 		wait_rising_edges(1);
 
-		ASSERT key1_irq_o = '0'
-			REPORT "ERROR: First repeated KEY1 IRQ did not clear"
-			SEVERITY ERROR;
+		check(key1_irq_o = '0',
+			  "ERROR: First repeated KEY1 IRQ did not clear");
 
 
 		KEY_i(1) <= '0';
@@ -575,15 +558,13 @@ BEGIN
 
 		wait_rising_edges(2);
 
-		ASSERT key1_irq_o = '1'
-			REPORT "ERROR: Second repeated KEY1 release did not generate IRQ"
-			SEVERITY ERROR;
+		check(key1_irq_o = '1',
+			  "ERROR: Second repeated KEY1 release did not generate IRQ");
 
 		wait_rising_edges(1);
 
-		ASSERT key1_irq_o = '0'
-			REPORT "ERROR: Second repeated KEY1 IRQ did not clear"
-			SEVERITY ERROR;
+		check(key1_irq_o = '0',
+			  "ERROR: Second repeated KEY1 IRQ did not clear");
 
 
 		-------------------------------------------------------------------------------------
@@ -596,9 +577,8 @@ BEGIN
 
 		wait_rising_edges(3);
 
-		ASSERT data_rd_o = x"00000006"
-			REPORT "ERROR: Pre-reset KEY state incorrect"
-			SEVERITY ERROR;
+		check(data_rd_o = x"00000006",
+			  "ERROR: Pre-reset KEY state incorrect");
 
 
 		-- Assert asynchronous reset between clock edges.
@@ -608,16 +588,14 @@ BEGIN
 
 		WAIT FOR 2 ns;
 
-		ASSERT key1_irq_o = '0' AND
+		check(key1_irq_o = '0' AND
 			   key2_irq_o = '0' AND
-			   key3_irq_o = '0'
-			REPORT "ERROR: IRQ active during asynchronous reset"
-			SEVERITY ERROR;
+			   key3_irq_o = '0',
+			  "ERROR: IRQ active during asynchronous reset");
 
 		-- Because internal state resets to KEY_IDLE.
-		ASSERT data_rd_o = x"00000007"
-			REPORT "ERROR: Internal PB state not reset to KEY_IDLE"
-			SEVERITY ERROR;
+		check(data_rd_o = x"00000007",
+			  "ERROR: Internal PB state not reset to KEY_IDLE");
 
 
 		-- Return external keys to their real idle state before releasing reset.
@@ -629,15 +607,13 @@ BEGIN
 
 		wait_rising_edges(4);
 
-		ASSERT key1_irq_o = '0' AND
+		check(key1_irq_o = '0' AND
 			   key2_irq_o = '0' AND
-			   key3_irq_o = '0'
-			REPORT "ERROR: Spurious interrupt after second reset"
-			SEVERITY ERROR;
+			   key3_irq_o = '0',
+			  "ERROR: Spurious interrupt after second reset");
 
-		ASSERT data_rd_o = x"00000007"
-			REPORT "ERROR: PORT_PB incorrect after reset recovery"
-			SEVERITY ERROR;
+		check(data_rd_o = x"00000007",
+			  "ERROR: PORT_PB incorrect after reset recovery");
 
 
 		-------------------------------------------------------------------------------------
@@ -663,26 +639,29 @@ BEGIN
 
 		wait_rising_edges(1);
 
-		ASSERT key3_irq_o = '1'
-			REPORT "ERROR: Bus-control transition interfered with KEY3 IRQ"
-			SEVERITY ERROR;
+		check(key3_irq_o = '1',
+			  "ERROR: Bus-control transition interfered with KEY3 IRQ");
 
-		ASSERT data_rd_o = x"00000000"
-			REPORT "ERROR: Read data active with MemRead_ctrl_i = 0"
-			SEVERITY ERROR;
+		check(data_rd_o = x"00000000",
+			  "ERROR: Read data active with MemRead_ctrl_i = 0");
 
 		wait_rising_edges(1);
 
-		ASSERT key3_irq_o = '0'
-			REPORT "ERROR: KEY3 IRQ did not return low"
-			SEVERITY ERROR;
+		check(key3_irq_o = '0',
+			  "ERROR: KEY3 IRQ did not return low");
 
 
 		-------------------------------------------------------------------------------------
 		-- End
 		-------------------------------------------------------------------------------------
 		REPORT "============================================================" SEVERITY NOTE;
-		REPORT "ALL GPIO_PB_Interface TESTS PASSED" SEVERITY NOTE;
+		REPORT "checks run : " & integer'image(checks_v) SEVERITY NOTE;
+		REPORT "failures   : " & integer'image(errors_v) SEVERITY NOTE;
+		IF errors_v = 0 THEN
+			REPORT "ALL GPIO_PB_Interface TESTS PASSED" SEVERITY NOTE;
+		ELSE
+			REPORT "GPIO_PB_Interface : THERE ARE FAILURES" SEVERITY FAILURE;
+		END IF;
 		REPORT "============================================================" SEVERITY NOTE;
 
 		sim_done <= TRUE;
