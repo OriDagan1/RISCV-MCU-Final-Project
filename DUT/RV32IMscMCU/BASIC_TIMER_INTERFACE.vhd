@@ -54,19 +54,32 @@
 -- pairs and the DTCM, so that every target on the data bus captures write data at the
 -- same instant of the CPU cycle.
 --
--- ONE CLOCK DOMAIN, AND THE ASSERT THAT KEEPS IT THAT WAY. These registers are
--- written by the CPU in the MCLK domain and read by BASIC_TIMER in the BTCLK domain,
--- where BTCLK is SMCLK divided by BTSSEL. That is only safe while SMCLK is MCLK: the
--- BTSSEL taps then come off a counter clocked by MCLK, their edges line up with MCLK
--- edges, and every path from here into the timer is an ordinary related-clock path
--- that TimeQuest analyses. Drive the timer from an independent PLL instead and the
--- same paths become true clock domain crossings - the 32-bit compare registers would
--- need a bundled-data handshake rather than bit-wise synchronizers, and BTIFG, which
--- is one BTCLK wide, would need a toggle pulse synchronizer, since a two-flop level
--- synchronizer like cdc_sync can miss a pulse that narrow. None of that machinery is
--- present in this file, so the ASSERT below refuses to elaborate a design in which it
--- would be required. It is a guard rail on retuning the PLLs, in the spirit of the
--- DA_WIDTH assert in GPIO_AddressDecoder.vhd.
+-- NO CROSSING HARDWARE, AND EXACTLY WHAT THE ASSERT DOES AND DOES NOT ENFORCE.
+-- These registers are written by the CPU in the MCLK domain and read by BASIC_TIMER
+-- in the BTCLK domain, where BTCLK is SMCLK divided by BTSSEL. This file carries no
+-- synchronizers, no bundled-data handshake on the 32-bit compare registers and no
+-- toggle-pulse synchronizer on BTIFG. That is correct, and the authority is forum
+-- row 15: "Since the CPU clock MCLK and the peripheral clock SMCLK are fed from the
+-- same 50MHz physical source, it only remains to ensure that MCLK is an integer
+-- multiple of SMCLK, which guarantees full synchronisation with no need for edge
+-- synchronisation." MCU.vhd runs both from their own PLL off the one 50 MHz board
+-- oscillator at 25 MHz each, so the ratio is 1 and the condition holds. BTSSEL only
+-- divides SMCLK further, so BTCLK stays an integer submultiple of MCLK.
+--
+-- WHAT THE ASSERT BELOW ACTUALLY CHECKS: that G_SMCLK_MHZ equals G_MCLK_MHZ. Nothing
+-- more. It is the row 15 condition, at ratio 1, and it is the whole reason this file
+-- is allowed to have no crossing hardware in it - retune one clock without the other
+-- and the design refuses to elaborate instead of quietly becoming unsafe. That is a
+-- guard rail on retuning the PLLs, in the spirit of the DA_WIDTH assert in
+-- GPIO_AddressDecoder.vhd.
+--
+-- WHAT IT DOES NOT CHECK, stated plainly because an earlier version of this comment
+-- claimed otherwise: it says nothing about how either clock is generated. It compares
+-- two constants. It will pass whether SMCLK is its own PLL output, a divided copy of
+-- MCLK, or the identical net - and under row 15 that is fine, because the shared
+-- 50 MHz source plus the integer ratio is the entire requirement and neither half of
+-- it depends on the generation method. Do not read this assert as proving that SMCLK
+-- and MCLK are the same physical net; they are not, and they do not need to be.
 --
 -- The tri-state buffer of Figure 5 is realised as a read multiplexer: this module
 -- drives zeros when it is not selected, so the I/O read paths can be OR-ed together.
@@ -85,15 +98,15 @@
 -- later, so it produces exactly one pulse per rising edge of btifg_i regardless of how
 -- many MCLK cycles that level stays high.
 --
--- Detecting that edge with a single register and no synchronizer is safe ONLY because
--- of the clock architecture decision in MCU.vhd: SMCLK, and therefore BTCLK (one of
--- its BTSSEL-selected taps), is now a synchronous branch of MCLK rather than an
--- independent PLL output, guarded by the ASSERT above. Were BTCLK ever genuinely
--- asynchronous to clk_i again, btifg_i would need a toggle-pulse synchronizer here
--- instead - a plain two-flop level synchronizer can miss a pulse narrower than one
--- destination clock period. That cannot happen in this design as built, since BTCLK is
--- derived from MCLK and can only ever be equal to or slower than it, but it is exactly
--- the risk this file's own ASSERT exists to rule out before it could arise.
+-- Detecting that edge with a single register and no synchronizer is safe because of
+-- the row 15 condition the ASSERT above holds: SMCLK and MCLK come from the same
+-- 50 MHz source at an integer ratio, so BTCLK - one of SMCLK's BTSSEL taps - is an
+-- integer submultiple of clk_i and can only ever be equal to or slower than it. A
+-- BTCLK-wide level is therefore at least one clk_i period long and cannot be missed.
+-- Were the ratio ever made non-integer, btifg_i would need a toggle-pulse
+-- synchronizer here instead - a plain two-flop level synchronizer can miss a pulse
+-- narrower than one destination clock period - and that is exactly the case the
+-- ASSERT refuses to let elaborate.
 --
 -- The edge is detected on the RISING edge of clk_i, unlike the register writes above,
 -- which capture on the falling edge. This has to match GPIO_PB_Interface, which
@@ -193,16 +206,18 @@ ARCHITECTURE rtl OF basic_timer_interface IS
 
 BEGIN
 
-	-- See the note on clock domains in the header. Everything in this file assumes
-	-- the timer is clocked from MCLK, so that BTCLK is a synchronous derivative of
-	-- the bus clock and no crossing hardware is needed.
+	-- Forum row 15's condition, at ratio 1. See the header for what this does and
+	-- does not enforce: it compares the two frequencies, and says nothing about how
+	-- either clock is generated. That is the whole requirement - both come from the
+	-- one 50 MHz board source, so an integer ratio guarantees synchronisation.
 	ASSERT G_SMCLK_MHZ = G_MCLK_MHZ
-		REPORT "basic_timer_interface: the Basic Timer must be clocked from MCLK. "
-			 & "G_SMCLK_MHZ differs from G_MCLK_MHZ, so BTCLK is asynchronous to the "
-			 & "data bus and these registers would cross clock domains unprotected - "
-			 & "BTCMPR0/1 need a bundled-data handshake and BTIFG a toggle pulse "
-			 & "synchronizer. Either equalise the clocks in QUARTUS/gen_plls.tcl or "
-			 & "add the crossing logic before removing this assert"
+		REPORT "basic_timer_interface: SMCLK and MCLK must be the same frequency. "
+			 & "G_SMCLK_MHZ differs from G_MCLK_MHZ, so the MCLK-to-SMCLK ratio is no "
+			 & "longer the integer ratio forum row 15 requires, and these registers "
+			 & "would cross clock domains unprotected - BTCMPR0/1 need a bundled-data "
+			 & "handshake and BTIFG a toggle pulse synchronizer. Either equalise the "
+			 & "clocks in QUARTUS/gen_plls.tcl or add the crossing logic before "
+			 & "removing this assert"
 		SEVERITY FAILURE;
 
 	--=======================================
