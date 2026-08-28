@@ -244,6 +244,10 @@ ARCHITECTURE structure OF MCU IS
 	SIGNAL btcmpr0_w		: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
 	SIGNAL btcmpr1_w		: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
 	SIGNAL btcapr_w			: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
+	-- The capture event out of BT, into BTIF's BTCAPR register. Forum row 25
+	-- makes BTCAPR read/write, so it is a register in BTIF with two load
+	-- sources and this is the one that tells it the timer has a new value.
+	SIGNAL capevt_w			: STD_LOGIC;
 	SIGNAL btcnt_w			: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
 	SIGNAL btifg_w			: STD_LOGIC;
 	SIGNAL bt_irq_w			: STD_LOGIC;
@@ -719,6 +723,7 @@ BEGIN
 		MemWrite_ctrl_i		=> bus_write_w,
 		data_wr_i			=> bus_wdata_w,
 		btcapr_i			=> btcapr_w,
+		capevt_i			=> capevt_w,
 		btifg_i				=> btifg_w,
 
 		--Outputs
@@ -755,7 +760,8 @@ BEGIN
 		pwmout_o			=> PWMout_o,
 		btifg_o				=> btifg_w,
 		btcapr_o			=> btcapr_w,
-		btcnt_o				=> btcnt_w
+		btcnt_o				=> btcnt_w,
+		capevt_o			=> capevt_w
 	);
 
 	-- The Basic Interrupt Controller (clause 6.v): IE, IFG and TYPE at

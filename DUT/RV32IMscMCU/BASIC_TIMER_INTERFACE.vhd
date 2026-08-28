@@ -38,14 +38,40 @@
 -- of displays. Decoding the address again in here would put a second comparator on
 -- the load/store critical path for no gain.
 --
--- BTCAPR IS READ ONLY, AND THIS IS A DEVIATION WORTH STATING. The bit table on page 7
--- marks every BTCAPR bit "rw", but Fig.7 draws it purely as the destination of
--- "BTCNT_CAPTURE on event register" and gives it no write path at all, and
--- BT_CAPTURE.vhd accordingly exposes btcapr only as an output. The two statements
--- cannot both be honoured. A store to 0x2028 is therefore accepted and silently
--- ignored here, the same way a store to PORT_SW is ignored: inventing a write path
--- into the capture register would mean overwriting a value the hardware captured,
--- which is the one thing the register exists to preserve.
+-- BTCAPR IS READ/WRITE, WITH TWO LOAD SOURCES. The bit table on page 7 marks every
+-- BTCAPR bit "rw", while Fig.7 draws it purely as the destination of "BTCNT_CAPTURE on
+-- event register" and gives it no write path at all. An earlier version of this file
+-- could not honour both and chose the figure, making a store to 0x2028 a silent no-op.
+-- Forum row 25 resolves it in favour of the table: "All of the timer's interface
+-- registers are readable and writable, except the four high bits of BTCTL2, which are
+-- read-only." So BTCAPR is a real register here now, not a pass-through of btcapr_i,
+-- and it is loadable from either side:
+--
+--   store to 0x2028   ->  btcapr_q <= data_wr_i        (falling edge, like every
+--                                                       other register in this file)
+--   capture event     ->  btcapr_q <= btcapr_i         (the count BT_CAPTURE latched)
+--
+-- The capture side needs to know WHEN a capture happened, which is what capevt_i is
+-- for - basic_timer exposes BT_CAPTURE's capevt purely so this register can exist.
+-- Watching btcapr_i for a change instead would not do: a periodic capture recording
+-- the same count every period never changes it, and that is precisely test4's
+-- input-capture mode, so the update would be silently missed.
+--
+-- Row 21 also puts BTCAPR in the list of interface registers that reset - "Only the
+-- timer module's interface registers reset on RESET: BTCTL1, BTCTL2, BTCAPR, BTCMPR0,
+-- BTCMPR1" - so btcapr_q resets to zero with the rest of them.
+--
+-- WHEN A STORE AND A CAPTURE LAND ON THE SAME EDGE, THE CAPTURE WINS. The two sources
+-- are asymmetric in what losing costs. A store is software: the ISR still holds the
+-- value in a register, knows it issued the store, and can read back and repeat it. A
+-- capture is a hardware measurement of a counter that has already moved on - drop it
+-- and the value does not exist anywhere any more. So the irrecoverable source takes
+-- priority over the recoverable one. This is the same reasoning as INT_CTRL.vhd's
+-- "set beats clear in the same cycle", and it also matches what the register is FOR:
+-- BTCAPR exists to preserve what the hardware captured, and a store that happens to
+-- collide with a capture must not be the thing that destroys it. The collision is
+-- narrow - capevt_i is one BTCLK wide and the store is one MCLK falling edge - but it
+-- is decided here explicitly rather than left to whichever branch comes last.
 --
 -- BTCNT IS NOT MAPPED. It is absent from the clause 6 table, so it gets no address.
 -- BASIC_TIMER still exposes btcnt_o, which MCU.vhd may route to Signal-Tap.
@@ -152,8 +178,12 @@ ENTITY basic_timer_interface IS
 		MemWrite_ctrl_i		: IN	STD_LOGIC;
 		data_wr_i			: IN	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
 
-		--From the timer, the captured count
+		--From the timer, the captured count, and the event that produced it.
+		--Both are needed: BTCAPR is read/write (row 25), so it is a register
+		--here with two load sources, and capevt_i is what tells it that the
+		--timer side has a new value. See the header.
 		btcapr_i			: IN	STD_LOGIC_VECTOR(N-1 DOWNTO 0);
+		capevt_i			: IN	STD_LOGIC;
 
 		--From the timer, the BTIFG level - one BTCLK wide, see the header
 		btifg_i				: IN	STD_LOGIC;
@@ -183,11 +213,14 @@ ARCHITECTURE rtl OF basic_timer_interface IS
 	SIGNAL btctl2_q			: STD_LOGIC_VECTOR(CTL2_MSB DOWNTO 0);
 	SIGNAL btcmpr0_q		: STD_LOGIC_VECTOR(N-1 DOWNTO 0);
 	SIGNAL btcmpr1_q		: STD_LOGIC_VECTOR(N-1 DOWNTO 0);
+	-- BTCAPR is a real register now, not a pass-through of btcapr_i. Row 25.
+	SIGNAL btcapr_q			: STD_LOGIC_VECTOR(N-1 DOWNTO 0);
 
 	SIGNAL wren_ctl1_w		: STD_LOGIC;
 	SIGNAL wren_ctl2_w		: STD_LOGIC;
 	SIGNAL wren_cmpr0_w		: STD_LOGIC;
 	SIGNAL wren_cmpr1_w		: STD_LOGIC;
+	SIGNAL wren_capr_w		: STD_LOGIC;
 
 	SIGNAL btctl2_w			: STD_LOGIC_VECTOR(CTL_WIDTH-1 DOWNTO 0);
 	SIGNAL ctl_rd_w			: STD_LOGIC_VECTOR(CTL_WIDTH-1 DOWNTO 0);
@@ -226,18 +259,25 @@ BEGIN
 	-- A register answers only when its own chip select is asserted and the access is
 	-- a store. BTCTL1 and BTCTL2 share a chip select, so sel_i decides which of the
 	-- two a store reaches - exactly one register is written per store, never both.
-	-- BTCAPR has no write enable at all; see the header.
+	-- BTCAPR now has one too: row 25 makes it read/write. See the header.
 	wren_ctl1_w		<= cs_btctl_i	AND MemWrite_ctrl_i AND (NOT sel_i);
 	wren_ctl2_w		<= cs_btctl_i	AND MemWrite_ctrl_i AND sel_i;
 	wren_cmpr0_w	<= cs_btcmpr0_i	AND MemWrite_ctrl_i;
 	wren_cmpr1_w	<= cs_btcmpr1_i	AND MemWrite_ctrl_i;
+	wren_capr_w		<= cs_btcapr_i	AND MemWrite_ctrl_i;
 
 	--=======================================
-	-- Write path : CPU -> registers
+	-- Write path : CPU -> registers, and the timer -> BTCAPR
 	--=======================================
-	-- All four registers reset to zero, as page 7 requires. That reset value is what
-	-- makes the timer safe out of reset: BTCTL1 = 0 means BTHOLD released, BTSSEL on
-	-- undivided SMCLK, BTINT on EQU0, and BTCTL2 = 0 means capture disabled.
+	-- All five registers reset to zero - page 7 for the four control and compare
+	-- registers, and forum row 21 for BTCAPR, which names it explicitly in the list of
+	-- interface registers that reset. That reset value is what makes the timer safe out
+	-- of reset: BTCTL1 = 0 means BTHOLD released, BTSSEL on undivided SMCLK, BTINT on
+	-- EQU0, and BTCTL2 = 0 means capture disabled.
+	--
+	-- BTCAPR is the one register with two load sources. capevt_i is tested FIRST, so a
+	-- capture beats a store that lands on the same edge - see the header for why the
+	-- irrecoverable source wins over the recoverable one.
 	WRREG:
 	process (clk_i, rst_i)
 	begin
@@ -246,6 +286,7 @@ BEGIN
 			btctl2_q	<= (OTHERS => '0');
 			btcmpr0_q	<= (OTHERS => '0');
 			btcmpr1_q	<= (OTHERS => '0');
+			btcapr_q	<= (OTHERS => '0');
 		elsif falling_edge(clk_i) then
 			if wren_ctl1_w = '1' then
 				btctl1_q	<= data_wr_i(CTL_WIDTH-1 DOWNTO 0);
@@ -258,6 +299,14 @@ BEGIN
 			end if;
 			if wren_cmpr1_w = '1' then
 				btcmpr1_q	<= data_wr_i(N-1 DOWNTO 0);
+			end if;
+
+			-- Capture first, store second: on a collision the hardware measurement
+			-- survives and the store is the one that has to be repeated.
+			if capevt_i = '1' then
+				btcapr_q	<= btcapr_i;
+			elsif wren_capr_w = '1' then
+				btcapr_q	<= data_wr_i(N-1 DOWNTO 0);
 			end if;
 		end if;
 	end process;
@@ -295,10 +344,12 @@ BEGIN
 	rd_cmpr1_w(DATA_BUS_WIDTH-1 DOWNTO N)		<= (OTHERS => '0');
 	rd_cmpr1_w(N-1 DOWNTO 0)					<= btcmpr1_q;
 
-	-- BTCAPR is read straight from the timer rather than from a copy here, so a load
-	-- always returns the most recent captured count.
+	-- BTCAPR is read from the register above, not straight through from btcapr_i. It
+	-- holds the most recent captured count as it always did - capevt_i loads it on
+	-- every capture - and now also whatever software last stored there, which is what
+	-- makes it read/write per row 25.
 	rd_capr_w(DATA_BUS_WIDTH-1 DOWNTO N)		<= (OTHERS => '0');
-	rd_capr_w(N-1 DOWNTO 0)						<= btcapr_i;
+	rd_capr_w(N-1 DOWNTO 0)						<= btcapr_q;
 
 	-- One read multiplexer over the four addressable registers. The chip selects are
 	-- one-hot by construction in PERIPH_AddressDecoder, so the priority in this chain

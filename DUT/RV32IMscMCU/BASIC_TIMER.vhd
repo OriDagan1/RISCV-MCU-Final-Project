@@ -80,7 +80,23 @@ ENTITY basic_timer IS
 		pwmout_o	: OUT	STD_LOGIC;
 		btifg_o		: OUT	STD_LOGIC;
 		btcapr_o	: OUT	STD_LOGIC_VECTOR(N-1 DOWNTO 0);
-		btcnt_o		: OUT	STD_LOGIC_VECTOR(N-1 DOWNTO 0)	-- readback
+		btcnt_o		: OUT	STD_LOGIC_VECTOR(N-1 DOWNTO 0);	-- readback
+
+		-- The capture event, one BTCLK wide, straight out of BT_CAPTURE's
+		-- CAPMD trigger select. It was already computed and already used
+		-- inside this block - it is the "10"/"11" input of the BTINT mux
+		-- below - and this port only exposes it. No logic changed.
+		--
+		-- It exists because forum row 25 makes BTCAPR read/write: "All of the
+		-- timer's interface registers are readable and writable, except the
+		-- four high bits of BTCTL2". A writable BTCAPR has to live in
+		-- BASIC_TIMER_INTERFACE as a register loadable from two sources - the
+		-- bus on a store, and the timer on a capture - and the second source
+		-- needs to know WHEN a capture happened. Watching btcapr_o for a
+		-- change cannot substitute: a periodic capture that records the same
+		-- count every period never changes it, which is exactly what test4's
+		-- input-capture mode does.
+		capevt_o	: OUT	STD_LOGIC
 	);
 END basic_timer;
 
@@ -219,5 +235,9 @@ BEGIN
 
 	--=======================================
 	btcnt_o	<= cnt_w;
+
+	-- See the note at the port declaration: an extra consumer of a signal the
+	-- BTINT mux above already uses, nothing more.
+	capevt_o	<= capevt_w;
 
 END struct;

@@ -500,7 +500,10 @@ package aux_package is
 			pwmout_o	: OUT	STD_LOGIC;
 			btifg_o		: OUT	STD_LOGIC;
 			btcapr_o	: OUT	STD_LOGIC_VECTOR(N-1 DOWNTO 0);
-			btcnt_o		: OUT	STD_LOGIC_VECTOR(N-1 DOWNTO 0)
+			btcnt_o		: OUT	STD_LOGIC_VECTOR(N-1 DOWNTO 0);
+			-- The capture event, so basic_timer_interface can load its BTCAPR
+			-- register on a capture. Forum row 25. See the note in BASIC_TIMER.vhd.
+			capevt_o	: OUT	STD_LOGIC
 		);
 	END COMPONENT;
 ---------------------------------------------------------
@@ -527,6 +530,8 @@ package aux_package is
 			data_wr_i			: IN	STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
 
 			btcapr_i			: IN	STD_LOGIC_VECTOR(N-1 DOWNTO 0);
+			-- The capture event that loads the BTCAPR register. Forum row 25.
+			capevt_i			: IN	STD_LOGIC;
 			btifg_i				: IN	STD_LOGIC;
 
 			--Outputs

@@ -27,8 +27,13 @@
 --    9. a store with MemWrite_ctrl_i low is ignored
 --   10. a load with cs_i low or MemRead_ctrl_i low returns zeros
 --   11. capture happens on the FALLING edge, not before
---   12. BTCAPR is read only: a store to it is ignored
---   13. BTCAPR is a live window on the timer, not a stored copy
+--   12. BTCAPR is READ/WRITE (forum row 25): a store is accepted, reads back,
+--       and does not disturb any other register; it also resets to zero
+--       (row 21). 12b: a store and a capture on the same falling edge - the
+--       capture wins, see BASIC_TIMER_INTERFACE.vhd's header for why
+--   13. BTCAPR is a register with two load sources, not a live window on the
+--       timer: btcapr_i alone does not change it, a capture event loads it,
+--       and a capture after a store overwrites the stored value
 --   14. asynchronous reset in mid operation clears everything immediately
 --   15. exhaustive walking one and walking zero over all 32 bits of BTCMPR0
 --   16. all ones and all zeros patterns on both compare registers
@@ -75,6 +80,10 @@ ARCHITECTURE sim OF tb_basic_timer_interface IS
 	SIGNAL memwr_w			: STD_LOGIC := '0';
 	SIGNAL data_wr_w		: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0) := (OTHERS => '0');
 	SIGNAL btcapr_w			: STD_LOGIC_VECTOR(N-1 DOWNTO 0) := (OTHERS => '0');
+	-- The capture event out of basic_timer, which loads BTCAPR from btcapr_w.
+	-- Forum row 25 made BTCAPR read/write, so it is a register in the DUT with
+	-- two load sources and this is the timer-side one.
+	SIGNAL capevt_w			: STD_LOGIC := '0';
 	SIGNAL btifg_w			: STD_LOGIC := '0';
 
 	SIGNAL data_rd_w		: STD_LOGIC_VECTOR(DATA_BUS_WIDTH-1 DOWNTO 0);
@@ -147,6 +156,7 @@ BEGIN
 		MemWrite_ctrl_i	=> memwr_w,
 		data_wr_i		=> data_wr_w,
 		btcapr_i		=> btcapr_w,
+		capevt_i		=> capevt_w,
 		btifg_i			=> btifg_w,
 		data_rd_o		=> data_rd_w,
 		bt_irq_o		=> bt_irq_w,
@@ -256,6 +266,20 @@ BEGIN
 			idle;
 		end procedure;
 
+		-- One capture event: present a count on btcapr_i and pulse capevt_i
+		-- across the falling edge, which is where the DUT's register samples.
+		-- Same waveform shape as bus_write, so a capture and a store can be
+		-- made to collide simply by issuing both around one falling edge.
+		procedure capture(v : STD_LOGIC_VECTOR) is
+		begin
+			wait until rising_edge(clk_w);
+			btcapr_w	<= v;
+			capevt_w	<= '1';
+			wait until falling_edge(clk_w);
+			wait for HOLD;
+			capevt_w	<= '0';
+		end procedure;
+
 		-- The read path is combinational, so no edge is needed.
 		procedure bus_read(r : reg_t; exp : STD_LOGIC_VECTOR; msg : string) is
 		begin
@@ -296,6 +320,17 @@ BEGIN
 		bus_read(R_BTCTL2,  ZERO_BUS, "T1 BTCTL2 reads zero after reset");
 		bus_read(R_BTCMPR0, ZERO_BUS, "T1 BTCMPR0 reads zero after reset");
 		bus_read(R_BTCMPR1, ZERO_BUS, "T1 BTCMPR1 reads zero after reset");
+
+		-- BTCAPR is a register now, so it has a reset value of its own. Forum
+		-- row 21 names it in the list that resets: "Only the timer module's
+		-- interface registers reset on RESET: BTCTL1, BTCTL2, BTCAPR,
+		-- BTCMPR0, BTCMPR1". btcapr_w is non-zero here on purpose - the read
+		-- must return the reset register, not the timer's input.
+		btcapr_w <= word(48879);
+		wait for HOLD;
+		bus_read(R_BTCAPR,  ZERO_BUS, "T1 BTCAPR reads zero after reset");
+		btcapr_w <= (OTHERS => '0');
+		wait for HOLD;
 
 		wait until rising_edge(clk_w);
 		rst_w <= '0';
@@ -422,32 +457,80 @@ BEGIN
 		bus_write(R_BTCMPR0, zext_word(word(1000)));	-- restore
 
 		--===============================================================
-		-- 12/13  BTCAPR is a read only live window on the timer
+		-- 12/13  BTCAPR is READ/WRITE, with two load sources
 		--===============================================================
+		-- These two checks previously asserted the opposite: "a store to
+		-- BTCAPR must be ignored" and "BTCAPR follows the timer, it is not a
+		-- stored copy". Forum row 25 overturns both - "All of the timer's
+		-- interface registers are readable and writable, except the four high
+		-- bits of BTCTL2, which are read-only" - so BTCAPR is now a register
+		-- in the DUT loaded from the bus on a store and from btcapr_i on a
+		-- capture event. Rewritten, not deleted, because the register still
+		-- has to track the timer; what changed is that a store also reaches it.
+
+		-- It no longer follows btcapr_i by itself. Moving the timer's value
+		-- with no capture event must NOT change what a load returns - that is
+		-- the difference between a register and the old pass-through.
 		btcapr_w <= word(12345);
 		wait for HOLD;
-		bus_read(R_BTCAPR, zext_word(word(12345)), "T13 BTCAPR reads the timer value");
+		bus_read(R_BTCAPR, ZERO_BUS,
+				 "T13 BTCAPR ignores btcapr_i without a capture event");
 
-		-- A store to BTCAPR must change nothing: Fig.7 gives the capture register
-		-- no write path, so the bus cannot overwrite a captured count.
-		bus_write(R_BTCAPR, zext_word(word(999)));
+		-- A capture event loads it.
+		capture(word(12345));
 		bus_read(R_BTCAPR, zext_word(word(12345)),
-				 "T12 a store to BTCAPR must be ignored");
+				 "T13 a capture event loads BTCAPR from the timer");
 
-		-- And it must not have been latched into any other register either
+		-- A store is accepted and reads back - the row 25 requirement itself.
+		bus_write(R_BTCAPR, zext_word(word(999)));
+		bus_read(R_BTCAPR, zext_word(word(999)),
+				 "T12 a store to BTCAPR is accepted and reads back");
+
+		-- And it must not have leaked into any other register
 		bus_read(R_BTCMPR0, zext_word(word(1000)), "T12 BTCAPR store did not touch BTCMPR0");
 		bus_read(R_BTCTL1,  zext_ctl(x"A5"),       "T12 BTCAPR store did not touch BTCTL1");
+		bus_read(R_BTCMPR1, zext_word(word(500)),  "T12 BTCAPR store did not touch BTCMPR1");
 
-		-- No stored copy: the value tracks the timer with no bus cycle in between
-		btcapr_w <= word(6789);
-		wait for HOLD;
+		-- A later capture overwrites what software stored: the hardware
+		-- measurement is still the register's primary job.
+		capture(word(6789));
 		bus_read(R_BTCAPR, zext_word(word(6789)),
-				 "T13 BTCAPR follows the timer, it is not a stored copy");
+				 "T13 a capture after a store overwrites the stored value");
 
-		btcapr_w <= (OTHERS => '1');
-		wait for HOLD;
+		-- Full-width patterns through both paths.
+		capture((btcapr_w'range => '1'));
 		bus_read(R_BTCAPR, zext_word((btcapr_w'range => '1')),
-				 "T13 BTCAPR returns all ones unchanged");
+				 "T13 BTCAPR captures all ones unchanged");
+		bus_write(R_BTCAPR, ZERO_BUS);
+		bus_read(R_BTCAPR, ZERO_BUS, "T12 BTCAPR stores all zeros unchanged");
+
+		--===============================================================
+		-- 12b  Store and capture on the SAME falling edge: capture wins
+		--===============================================================
+		-- Documented in BASIC_TIMER_INTERFACE.vhd's header: the two sources
+		-- are asymmetric in what losing costs. A store is software and can be
+		-- retried - the ISR still holds the value. A capture is a measurement
+		-- of a counter that has already moved on, and once dropped it exists
+		-- nowhere. So the irrecoverable source takes priority.
+		bus_write(R_BTCAPR, zext_word(word(4444)));
+		bus_read(R_BTCAPR, zext_word(word(4444)), "T12b a known value before the collision");
+
+		wait until rising_edge(clk_w);
+		btcapr_w	<= word(31337);		-- the timer's captured count
+		capevt_w	<= '1';				-- and the capture event
+		aim(R_BTCAPR);					-- and a store to the same register
+		memwr_w		<= '1';
+		memrd_w		<= '0';
+		data_wr_w	<= zext_word(word(555));
+		wait until falling_edge(clk_w);
+		wait for HOLD;
+		capevt_w	<= '0';
+		idle;
+		wait for HOLD;
+
+		bus_read(R_BTCAPR, zext_word(word(31337)),
+				 "T12b capture beats a store on the same edge");
+
 		btcapr_w <= (OTHERS => '0');
 		wait for HOLD;
 
