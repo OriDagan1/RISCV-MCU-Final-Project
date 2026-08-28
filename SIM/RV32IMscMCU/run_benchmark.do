@@ -24,7 +24,23 @@
 # EDIT THESE
 # ----------------------------------------------------------------------------
 # Folder containing bin/. Forward slashes.
-quietly set APP "C:/Users/oripa/Documents/Benchmark_Apps/Final Project Tests/RV32IM/test1/man_compiled"
+#
+# Relative to this directory, SIM/RV32IMscMCU - the same "../../" convention
+# compile.do uses to reach DUT/ and TB/ - so it works on any machine that has
+# the lecturer's benchmark archive unpacked at the repository root. It used to
+# be an absolute path into one developer's home directory, which is why it
+# only ever ran there.
+#
+# THIS IS THE CANONICAL RV32IM test1. It is the application README.md
+# documents, it exercises div, mul and rem, and its own output/RARS/DTCM.h is
+# the golden model the check below diffs against. It runs in 276 MCLK cycles.
+#
+# The 134-cycle figure quoted throughout the earlier tasks in this project
+# came from a DIFFERENT and older copy of test1 that happened to be on one
+# machine - an add/mul/xor version with no division in it at all. That number
+# is retired: it never exercised the divider, so it was never the right
+# baseline for an RV32IM core. 276 is the baseline from here on.
+quietly set APP "../../Benchmark apps-20260827T145317Z-1-001/Benchmark apps/RV32IM/test1/man_compiled"
 
 # auto | M9K | HEX      "auto" picks from the compiled TCM size.
 quietly set IMAGE auto
