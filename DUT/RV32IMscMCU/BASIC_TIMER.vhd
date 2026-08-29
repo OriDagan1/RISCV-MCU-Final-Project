@@ -82,10 +82,9 @@ ENTITY basic_timer IS
 		btcapr_o	: OUT	STD_LOGIC_VECTOR(N-1 DOWNTO 0);
 		btcnt_o		: OUT	STD_LOGIC_VECTOR(N-1 DOWNTO 0);	-- readback
 
-		-- The capture event, one BTCLK wide, straight out of BT_CAPTURE's
-		-- CAPMD trigger select. It was already computed and already used
-		-- inside this block - it is the "10"/"11" input of the BTINT mux
-		-- below - and this port only exposes it. No logic changed.
+		-- The capture event, straight out of BT_CAPTURE's CAPMD trigger
+		-- select, but registered one BTCLK cycle here before it leaves this
+		-- block - see the note at CAPEVT_ALIGN below for why.
 		--
 		-- It exists because forum row 25 makes BTCAPR read/write: "All of the
 		-- timer's interface registers are readable and writable, except the
@@ -122,6 +121,7 @@ ARCHITECTURE struct OF basic_timer IS
 	SIGNAL equ0_w		: STD_LOGIC;
 	SIGNAL equ1_w		: STD_LOGIC;
 	SIGNAL capevt_w		: STD_LOGIC;
+	SIGNAL capevt_q		: STD_LOGIC;	-- capevt_w, delayed one BTCLK cycle to align with btcapr_o
 
 BEGIN
 	--=======================================
@@ -236,8 +236,34 @@ BEGIN
 	--=======================================
 	btcnt_o	<= cnt_w;
 
-	-- See the note at the port declaration: an extra consumer of a signal the
-	-- BTINT mux above already uses, nothing more.
-	capevt_o	<= capevt_w;
+	-- CAPEVT_ALIGN: capevt_w is combinational off of BT_CAPTURE's own
+	-- synchronizer, so it goes high the SAME BTCLK edge that edge is
+	-- detected - one full cycle before BT_CAPTURE's own btcapr_q register
+	-- (piped through this block's btcapr_o) actually updates to the value
+	-- that edge captured. A consumer that samples btcapr_o the instant it
+	-- sees capevt_w therefore reads the value from BEFORE this event, not
+	-- from it - confirmed in simulation: BASIC_TIMER_INTERFACE's BTCAPR
+	-- register latched 0 on test4's first capture and the previous capture's
+	-- value on the second, one event late every time.
+	--
+	-- capevt_q is capevt_w re-registered on the same rising_edge(btclk_w),
+	-- so it reads the identical pre-edge value the btcapr_q process inside
+	-- BT_CAPTURE reads for its own IF-condition - the two therefore update
+	-- together, one cycle later than before, with capevt_q asserted in
+	-- exactly the window btcapr_o already holds the new value.
+	--
+	-- btifg_o above is deliberately left on the raw capevt_w: the interrupt
+	-- request itself is not what was late, only the value BASIC_TIMER_INTERFACE
+	-- latched off of it, so only the port capevt_o feeds is delayed here.
+	CAPEVT_ALIGN: PROCESS (btclk_w, rst_i)
+	BEGIN
+		IF rst_i = '1' THEN
+			capevt_q	<= '0';
+		ELSIF rising_edge(btclk_w) THEN
+			capevt_q	<= capevt_w;
+		END IF;
+	END PROCESS;
+
+	capevt_o	<= capevt_q;
 
 END struct;
