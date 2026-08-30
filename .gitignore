@@ -11,6 +11,10 @@ SIM/**/modelsim.ini
 # and the output is not.
 SIM/**/*.vcd
 
+# Same reasoning, different location: waveform dump from the MCU testbench
+# run (hundreds of MB, exceeds GitHub's 100MB push limit).
+vcd/*.vcd
+
 # Quartus IP generation. The .qsys sources, the synthesis output and the
 # ModelSim simulation models ARE committed - the design needs them. Ignored
 # here: setup scripts for simulators we do not use, and generation reports.
